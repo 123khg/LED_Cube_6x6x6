@@ -1,4 +1,4 @@
-// #include <DabbleESP32.h>  // Install "DabbleESP32" library
+#include <DabbleESP32.h>  // Install "DabbleESP32" library
 
 // Define your Bluetooth name
 #define BLUETOOTH_NAME "ESP32_Snake"
@@ -68,7 +68,7 @@ void loop() {
 
 
   // Debug 
-  printSnake();
+  // printSnake();
   // printMap();
 
   delay(50);
