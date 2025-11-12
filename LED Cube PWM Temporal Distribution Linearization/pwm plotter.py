@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-bits = 5
+bits = 6
 cycles = 2**bits
 tShift = 7.7 #ms
 tLayer = 2777.78 #ms
-duty = 30#%
+duty = 100#%
 tOn = duty*tLayer/100
 tBits = tLayer/cycles
 OnBit = min(round(tOn / (tBits - tShift)), cycles)

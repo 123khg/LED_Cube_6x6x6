@@ -25,6 +25,8 @@ float brightness;
 unsigned int previousTime = millis();
 int updateInterval = 1200; // miliseconds
 int highscore;
+bool gamestart = false;   
+bool gameover  = false;  
 
 //################ CANVAS / MAP ################
 int canvas[6][6][6];
@@ -56,10 +58,6 @@ void setup() {
   // Initialize Dabble
   // Dabble.begin(BLUETOOTH_NAME);
   Serial.println("Dabble ready. Waiting for connection...");
-
-  initMap();
-  initSnake();
-  initFood();
 }
 
 void loop() {
@@ -100,7 +98,20 @@ void initSnake() {
 }
 
 void initFood() { // Nhat Huy
+  bool check;
+  do {
+    food.x = random(0, 5);
+    food.y = random(0, 5);
+    food.z = random(0, 5);
+    check = false;
 
+    for (int i=0; i < bodySize; ++i){
+      if (snake[i].x==food.x && snake[i].y==food.y && snake[i].z==food.z){
+        check = true;
+        break;
+      }
+    }
+  } while (check);
 }
 
 // void getInput() {
@@ -124,16 +135,63 @@ void initFood() { // Nhat Huy
 //   delay(100);
 // }
 
-void updateGameState() {
-  if (millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
-    // Cho rắn duy chuyển phía trước
-    // Kiểm tra có đụng tường ko -> sang tường bên kia
-    // Kiểm tra có chạm cơ thể ko
-    // Kiểm tra có ăn táo ko -> update độ dài
+void updateGameState() { // Nhat Huy
+  // Nếu chưa chạy → bắt đầu ván mới
+  if (!gamestart && !gameover) {
+    initMap();
+    initSnake();   
+    initFood();    
+    gamestart = true;
+    gameover  = false;
+  }
 
+  if (gamestart && !gameover && millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
+    // Tạo vector chuyển động và đầu mới
+    Coords coordIncrease = {0, 0, 0}; // X, Y, Z
+    if (snakeDir == FORWARD) coordIncrease.x = 1;
+    if (snakeDir == BACKWARD) coordIncrease.x = -1;
+    if (snakeDir == RIGHT) coordIncrease.y = -1;
+    if (snakeDir == LEFT) coordIncrease.y = 1;
+    if (snakeDir == UP) coordIncrease.z = 1;
+    if (snakeDir == DOWN) coordIncrease.z = -1;
+    Coords newHead = {snake[0].x + coordIncrease.x, snake[0].y + coordIncrease.y, snake[0].z + coordIncrease.z};
+
+    // Ăn táo
+    bool ate = (newHead.x == food.x && newHead.y == food.y && newHead.z == food.z);
+    if (ate && bodySize < 216) {
+      bodySize++;      // rắn dài thêm 1
+      initFood();      // spawn táo mới (không trùng rắn)
+    }
+    else {
+      for (int i = bodySize - 1; i > 0; i--) {
+        //  Chạm cơ thể → đứng yên
+        if (snake[i].x == newHead.x && snake[i].y == newHead.y && snake[i].z == newHead.z) {
+          gameover  = true;
+          gamestart = false;
+          return; // Cần điều chỉnh cái này !!!!!!!!!!!!!!!!!!
+        }
+        else snake[i] = snake[i-1]; // Cho rắn duy chuyển phía trước, đẩy đuôi lên đốt tiếp theo
+      }
+    }
+
+    snake[0] = newHead;
+
+    // Kiểm tra có đụng tường ko -> sang tường bên kia
 
     previousTime = millis(); // Đặt lại thời gian hiện tại
   }
+}
+
+//mức sáng: 0 = tắt; 1 = thân sáng vừa; 2 = đầu và táo sáng nhất
+void renderScene() {
+  // Thân rắn = 1, Đầu rắn = 2
+  for (int i = 0; i < bodySize; i++) {    
+    Coords p = snake[i];
+    if (i == 0) canvas[p.z][p.y][p.x] = 2;
+    else canvas[p.z][p.y][p.x] = 1;
+  }
+  // Táo = 2
+  canvas[food.z][food.y][food.x] = 2;
 }
 
 void SPIPWM(int freq, int res, float duty) { // Phuoc Khang
