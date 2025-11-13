@@ -142,13 +142,8 @@ void updateGameState() { // Nhat Huy
     initSnake();   
     initFood();    
     gamestart = true;
-    gameover  = false;
-    if (bodySize >= 6) {
-      showFireworks();  // Khi rắn đủ dài thì hiển thị pháo hoa
-    }
-     return; 
+    gameover  = false;    
   }
-
   if (gamestart && !gameover && millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
     // Tạo vector chuyển động và đầu mới
     Coords coordIncrease = {0, 0, 0}; // X, Y, Z
@@ -172,6 +167,9 @@ void updateGameState() { // Nhat Huy
         if (snake[i].x == newHead.x && snake[i].y == newHead.y && snake[i].z == newHead.z) {
           gameover  = true;
           gamestart = false;
+          if (bodySize >= 6) {
+            showFireworks();  // Khi rắn đủ dài thì hiển thị pháo hoa
+          }
           return; // Cần điều chỉnh cái này !!!!!!!!!!!!!!!!!!
         }
         else snake[i] = snake[i-1]; // Cho rắn duy chuyển phía trước, đẩy đuôi lên đốt tiếp theo
