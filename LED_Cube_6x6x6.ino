@@ -143,6 +143,10 @@ void updateGameState() { // Nhat Huy
     initFood();    
     gamestart = true;
     gameover  = false;
+    if (bodySize >= 6) {
+      showFireworks();  // Khi rắn đủ dài thì hiển thị pháo hoa
+    }
+     return; 
   }
 
   if (gamestart && !gameover && millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
@@ -220,4 +224,30 @@ void printCanvas() {
       Serial.print('\n');
     }
   }
+}
+//------------------ HIỆU ỨNG PHÁO HOA ------------------
+void showFireworks() {
+  for (int t = 0; t < 10; t++) { // 10 đợt nổ
+    initMap(); // Xóa toàn bộ LED
+
+    int centerX = random(1,5);
+    int centerY = random(1,5);
+    int centerZ = random(1,5);
+
+    for (int i = 0; i < 12; i++) {
+      int dx = random(-2,3);
+      int dy = random(-2,3);
+      int dz = random(-2,3);
+      int x = constrain(centerX + dx, 0, 5);
+      int y = constrain(centerY + dy, 0, 5);
+      int z = constrain(centerZ + dz, 0, 5);
+      canvas[z][y][x] = 2;  // LED sáng mạnh
+    }
+
+    printCanvas();  // hoặc hàm render LED thực tế
+    delay(180);
+  }
+
+  initMap();
+  printCanvas(); // Tắt LED sau pháo hoa
 }
