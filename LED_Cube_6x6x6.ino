@@ -114,26 +114,48 @@ void initFood() { // Nhat Huy
   } while (check);
 }
 
-// void getInput() {
-//   Dabble.processInput();
+void getInput() {
+  Dabble.processInput();
 
-//   // Read 6 buttons: Up, Down, Left, Right, Start, Select
-//   bool up     = GamePad.isUpPressed();
-//   bool down   = GamePad.isDownPressed();
-//   bool left   = GamePad.isLeftPressed();
-//   bool right  = GamePad.isRightPressed();
-//   bool start  = GamePad.isTrianglePressed();  // or use any custom mapping
-//   bool select = GamePad.isCirclePressed();
+  // Read 6 buttons: Up, Down, Left, Right, Start, Select
+  bool up     = GamePad.isUpPressed();
+  bool down   = GamePad.isDownPressed();
+  bool left   = GamePad.isLeftPressed();
+  bool right  = GamePad.isRightPressed();
+  bool start  = GamePad.isTrianglePressed();  // or use any custom mapping
+  bool select = GamePad.isCirclePressed();
 
-//   Serial.print("U:"); Serial.print(up);
-//   Serial.print(" D:"); Serial.print(down);
-//   Serial.print(" L:"); Serial.print(left);
-//   Serial.print(" R:"); Serial.print(right);
-//   Serial.print(" S:"); Serial.print(start);
-//   Serial.print(" C:"); Serial.println(select);
+ // ============ Chống đi chéo =============
 
-//   delay(100);
-// }
+    // Đếm số nút được nhấn
+    int pressedCount =  up + down + left + right + forward + backward;
+
+    // Nếu 0 nhấn hoặc nhấn hơn 1 nút → bỏ qua, giữ nguyên hướng
+    if (pressedCount != 1) {
+        return;   // Giữ snakeDir như cũ
+    }
+
+ // ============ xử lý hướng rắn ============ 
+    Direction newDir = snakeDir;
+// Tránh quay 180 độ
+    if (left  && snakeDir != RIGHT)       newDir = LEFT;
+    else if (right && snakeDir != LEFT)   newDir = RIGHT;
+    else if (up    && snakeDir != DOWN)   newDir = UP;
+    else if (down  && snakeDir != UP)     newDir = DOWN;
+    else if (forward && snakeDir != BACKWARD) newDir = FORWARD;
+    else if (backward && snakeDir != FORWARD) newDir = BACKWARD;
+
+    snakeDir = newDir;
+
+  Serial.print("U:"); Serial.print(up);
+  Serial.print(" D:"); Serial.print(down);
+  Serial.print(" L:"); Serial.print(left);
+  Serial.print(" R:"); Serial.print(right);
+  Serial.print(" S:"); Serial.print(start);
+  Serial.print(" C:"); Serial.println(select);
+
+  delay(100);
+}
 
 void updateGameState() { // Nhat Huy
   // Nếu chưa chạy → bắt đầu ván mới
@@ -178,7 +200,16 @@ void updateGameState() { // Nhat Huy
 
     snake[0] = newHead;
 
-    // Kiểm tra có đụng tường ko -> sang tường bên kia
+    // Xuyên tường (wrap-around)
+if (snake[0].x < 0) snake[0].x = 5;
+if (snake[0].x > 5) snake[0].x = 0;
+
+if (snake[0].y < 0) snake[0].y = 5;
+if (snake[0].y > 5) snake[0].y = 0;
+
+if (snake[0].z < 0) snake[0].z = 5;
+if (snake[0].z > 5) snake[0].z = 0;
+ // Kiểm tra có đụng tường ko -> sang tường bên kia
 
     previousTime = millis(); // Đặt lại thời gian hiện tại
   }
@@ -223,6 +254,7 @@ void printCanvas() {
     }
   }
 }
+
 //------------------ HIỆU ỨNG PHÁO HOA ------------------
 void showFireworks() {
   for (int t = 0; t < 10; t++) { // 10 đợt nổ
@@ -248,4 +280,6 @@ void showFireworks() {
 
   initMap();
   printCanvas(); // Tắt LED sau pháo hoa
+
 }
+
