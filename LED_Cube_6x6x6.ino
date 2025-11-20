@@ -125,27 +125,23 @@ void getInput() {
   bool start  = GamePad.isTrianglePressed();  // or use any custom mapping
   bool select = GamePad.isCirclePressed();
 
- // ============ Chống đi chéo =============
+  // ============ Chống đi chéo =============
+  // Đếm số nút được nhấn
+  int pressedCount =  up + down + left + right + forward + backward;
 
-    // Đếm số nút được nhấn
-    int pressedCount =  up + down + left + right + forward + backward;
+  // Nếu 0 nhấn hoặc nhấn hơn 1 nút → bỏ qua, giữ nguyên hướng
+  if (pressedCount != 1) {
+    return;   // Giữ snakeDir như cũ
+  }
 
-    // Nếu 0 nhấn hoặc nhấn hơn 1 nút → bỏ qua, giữ nguyên hướng
-    if (pressedCount != 1) {
-        return;   // Giữ snakeDir như cũ
-    }
-
- // ============ xử lý hướng rắn ============ 
-    Direction newDir = snakeDir;
-// Tránh quay 180 độ
-    if (left  && snakeDir != RIGHT)       newDir = LEFT;
-    else if (right && snakeDir != LEFT)   newDir = RIGHT;
-    else if (up    && snakeDir != DOWN)   newDir = UP;
-    else if (down  && snakeDir != UP)     newDir = DOWN;
-    else if (forward && snakeDir != BACKWARD) newDir = FORWARD;
-    else if (backward && snakeDir != FORWARD) newDir = BACKWARD;
-
-    snakeDir = newDir;
+  // ============ xử lý hướng rắn ============
+  // Tránh quay 180 độ
+  if (left  && snakeDir != RIGHT)           snakeDir = LEFT;
+  else if (right && snakeDir != LEFT)       snakeDir = RIGHT;
+  else if (up    && snakeDir != DOWN)       snakeDir = UP;
+  else if (down  && snakeDir != UP)         snakeDir = DOWN;
+  else if (forward && snakeDir != BACKWARD) snakeDir = FORWARD;
+  else if (backward && snakeDir != FORWARD) snakeDir = BACKWARD;
 
   Serial.print("U:"); Serial.print(up);
   Serial.print(" D:"); Serial.print(down);
