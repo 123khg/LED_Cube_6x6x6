@@ -1,6 +1,5 @@
-#include <DabbleESP32.h>  // Install "DabbleESP32" library
+#include <DabbleESP32.h>
 
-// Define your Bluetooth name
 #define BLUETOOTH_NAME "ESP32_Snake"
 
 /*
@@ -25,11 +24,323 @@ float brightness;
 unsigned int previousTime = millis();
 int updateInterval = 1200; // miliseconds
 int highscore;
-bool gamestart = false;   
-bool gameover  = false;  
+bool gameStart = false;
+bool gameOver = false;
 
-//################ CANVAS / MAP ################
+//################ CANVAS ################
+int debugDebounce = 10;
+bool debug = true;
+int debugFlag = 0;
+bool dabbleDebug = false;
+int dabbleDebugFlag = 0;
 int canvas[6][6][6];
+
+// Binary maps for 0-9 and A-Z based on ASCII decimal code
+typedef uint8_t Glyph6[6][6];
+const Glyph6 FONT6[128] = {
+
+  /* 0–47: blank */
+  #define BLANK {{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0},{0,0,0,0,0,0}}
+
+  BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,
+  BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,
+  BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,
+  BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,
+
+  /* '0' = ASCII 48 */
+  {{1,1,1,1,1,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,1,1},
+  {1,1,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,1}},
+
+  /* '1' */
+  {{0,0,1,1,0,0},
+  {0,1,0,1,0,0},
+  {1,0,0,1,0,0},
+  {0,0,0,1,0,0},
+  {0,0,0,1,0,0},
+  {1,1,1,1,1,1}},
+
+  /* '2' */
+  {{1,1,1,1,1,0},
+  {0,0,0,0,0,1},
+  {0,0,0,0,1,0},
+  {0,0,0,1,0,0},
+  {0,0,1,0,0,0},
+  {1,1,1,1,1,1}},
+
+  /* '3' */
+  {{1,1,1,1,1,0},
+  {0,0,0,0,0,1},
+  {0,0,0,1,1,0},
+  {0,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* '4' */
+  {{0,0,0,1,1,0},
+  {0,0,1,0,1,0},
+  {0,1,0,0,1,0},
+  {1,0,0,0,1,0},
+  {1,1,1,1,1,1},
+  {0,0,0,0,1,0}},
+
+  /* '5' */
+  {{1,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,0},
+  {0,0,0,0,0,1},
+  {0,0,0,0,0,1},
+  {1,1,1,1,1,0}},
+
+  /* '6' */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* '7' */
+  {{1,1,1,1,1,1},
+  {0,0,0,0,0,1},
+  {0,0,0,0,1,0},
+  {0,0,0,1,0,0},
+  {0,0,1,0,0,0},
+  {0,0,1,0,0,0}},
+
+  /* '8' */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* '9' */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,1},
+  {0,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* 58–64 blank */
+  BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,BLANK,
+
+  /* 'A' = 65 */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1}},
+
+  /* 'B' */
+  {{1,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,0}},
+
+  /* 'C' */
+  {{0,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {0,1,1,1,1,1}},
+
+  /* 'D' */
+  {{1,1,1,1,0,0},
+  {1,0,0,0,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,1,0},
+  {1,1,1,1,0,0}},
+
+  /* 'E' */
+  {{1,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,1}},
+
+  /* 'F' */
+  {{1,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0}},
+
+  /* 'G' */
+  {{0,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {1,0,0,1,1,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,1}},
+
+  /* 'H' */
+  {{1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1}},
+
+  /* 'I' */
+  {{1,1,1,1,1,1},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {1,1,1,1,1,1}},
+
+  /* 'J' */
+  {{0,0,0,0,1,1},
+  {0,0,0,0,0,1},
+  {0,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* 'K' */
+  {{1,0,0,0,1,0},
+  {1,0,0,1,0,0},
+  {1,0,1,0,0,0},
+  {1,1,0,0,0,0},
+  {1,0,1,0,0,0},
+  {1,0,0,1,0,0}},
+
+  /* 'L' */
+  {{1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,1,1,1,1,1}},
+
+  /* 'M' */
+  {{1,0,0,0,0,1},
+  {1,1,0,0,1,1},
+  {1,0,1,1,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1}},
+
+  /* 'N' */
+  {{1,0,0,0,0,1},
+  {1,1,0,0,0,1},
+  {1,0,1,0,0,1},
+  {1,0,0,1,0,1},
+  {1,0,0,0,1,1},
+  {1,0,0,0,0,1}},
+
+  /* 'O' */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* 'P' */
+  {{1,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0},
+  {1,0,0,0,0,0}},
+
+  /* 'Q' */
+  {{0,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,1,0,1},
+  {0,1,1,1,1,1}},
+
+  /* 'R' */
+  {{1,1,1,1,1,0},
+  {1,0,0,0,0,1},
+  {1,1,1,1,1,0},
+  {1,0,1,0,0,0},
+  {1,0,0,1,0,0},
+  {1,0,0,0,1,0}},
+
+  /* 'S' */
+  {{0,1,1,1,1,1},
+  {1,0,0,0,0,0},
+  {0,1,1,1,1,0},
+  {0,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* 'T' */
+  {{1,1,1,1,1,1},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0}},
+
+  /* 'U' */
+  {{1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,1,1,1,0}},
+
+  /* 'V' */
+  {{1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {0,1,0,0,1,0},
+  {0,1,0,0,1,0},
+  {0,0,1,1,0,0}},
+
+  /* 'W' */
+  {{1,0,0,0,0,1},
+  {1,0,0,0,0,1},
+  {1,0,0,1,0,1},
+  {1,0,1,0,1,1},
+  {1,1,0,0,1,1},
+  {1,0,0,0,0,1}},
+
+  /* 'X' */
+  {{1,0,0,0,0,1},
+  {0,1,0,0,1,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,1,0,0,1,0},
+  {1,0,0,0,0,1}},
+
+  /* 'Y' */
+  {{1,0,0,0,0,1},
+  {0,1,0,0,1,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0},
+  {0,0,1,1,0,0}},
+
+  /* 'Z' */
+  {{1,1,1,1,1,1},
+  {0,0,0,0,1,0},
+  {0,0,0,1,0,0},
+  {0,0,1,0,0,0},
+  {0,1,0,0,0,0},
+  {1,1,1,1,1,1}},
+};
+char startMsg[] = "PRESS START TO START";
+char overMsg[] = "THANKS FOR PLAYING";
+// Chưa làm xong phần hiện lên led cube cái này
 
 //################ SNAKE ################
 struct Coords {
@@ -38,7 +349,7 @@ struct Coords {
   int z;
 };
 Coords snake[216];
-int bodySize = 2;
+int bodySize = 3;
 
 enum Directions {
   FORWARD,
@@ -48,31 +359,58 @@ enum Directions {
   UP,
   DOWN
 };
-int snakeDir = LEFT;
+int snakeDir = random(0, 3);
+int bufferDir = snakeDir;
 
 //################ FOOD ################
 Coords food;
 
 void setup() {
   Serial.begin(115200);
-  // Initialize Dabble
-  // Dabble.begin(BLUETOOTH_NAME);
+  Dabble.begin(BLUETOOTH_NAME);
   Serial.println("Dabble ready. Waiting for connection...");
+  clearCanvas();
+  initSnake();   
+  initFood();
 }
 
 void loop() {
-  // getInput();
-  updateGameState();
+  getInput();
 
+  // Pre-game
+  if (!gameStart && !gameOver)
+    Serial.println("Game hasn't started yet, press 'Start' to start =)).");
 
-  // Debug 
-  // printSnake();
-  // printMap();
+  // In-game
+  else if (gameStart && !gameOver && millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
+    updateGameState();
+    previousTime = millis(); // Đặt lại thời gian hiện tại
+  } 
+
+  // Game Over and Fireworks
+  else if (gameStart && gameOver) {
+    if (bodySize >= 6) {
+      showFireworks();  // Khi rắn đủ dài thì hiển thị pháo hoa
+    }
+    Serial.println("Game Over");
+    gameStart = false;
+  }
+
+  // Restart game *Once*
+  else if (!gameStart && gameOver) {
+    // Nếu chưa chạy → bắt đầu ván mới
+    clearCanvas();
+    initSnake();   
+    initFood();
+    bodySize = 3;
+    snakeDir = random(0, 3);
+    gameOver = false;
+  }
 
   delay(50);
 }
 
-void initMap() {
+void clearCanvas() {
   for (int z = 0; z < 6; z++) {
     for (int y = 0; y < 6; y++) {
       for (int x = 0; x < 6; x++) {
@@ -114,16 +452,49 @@ void initFood() { // Nhat Huy
   } while (check);
 }
 
-void getInput() {
+void getInput() { // Phuc Khang
   Dabble.processInput();
 
-  // Read 6 buttons: Up, Down, Left, Right, Start, Select
-  bool up     = GamePad.isUpPressed();
-  bool down   = GamePad.isDownPressed();
-  bool left   = GamePad.isLeftPressed();
-  bool right  = GamePad.isRightPressed();
-  bool start  = GamePad.isTrianglePressed();  // or use any custom mapping
-  bool select = GamePad.isCirclePressed();
+  // Read all 10 buttons for game controls and settings
+  bool forward = GamePad.isUpPressed();
+  bool backward = GamePad.isDownPressed();
+  bool left = GamePad.isLeftPressed();
+  bool right = GamePad.isRightPressed();
+  bool up = GamePad.isTrianglePressed();
+  bool down = GamePad.isCrossPressed();
+  bool start  = GamePad.isStartPressed();
+  bool select = GamePad.isSelectPressed();
+
+  // Debug
+  if (GamePad.isCirclePressed()) debugFlag += 1;
+  else debugFlag = 0;
+  if (GamePad.isSquarePressed()) dabbleDebugFlag += 1;
+  else dabbleDebugFlag = 0;
+
+  if (debugFlag >= debugDebounce) {
+    debug = !debug;
+    Serial.println("Game debug toggled: " + String(debug));
+    debugFlag = 0;
+  }
+  if (dabbleDebugFlag >= debugDebounce) {
+    dabbleDebug = !dabbleDebug;
+    Serial.println("Dabble debug toggled: " + String(dabbleDebug));
+    dabbleDebugFlag = 0;
+  }
+
+  if (dabbleDebug) {
+    Serial.print("U:"); Serial.print(up);
+    Serial.print(" D:"); Serial.print(down);
+    Serial.print(" L:"); Serial.print(left);
+    Serial.print(" R:"); Serial.print(right);
+    Serial.print(" F:"); Serial.print(forward);
+    Serial.print(" B:"); Serial.print(backward);
+    Serial.print(" S:"); Serial.print(start);
+    Serial.print(" C:"); Serial.println(select);
+  }
+
+  // Start game
+  if (start) gameStart = true;
 
   // ============ Chống đi chéo =============
   // Đếm số nút được nhấn
@@ -136,79 +507,64 @@ void getInput() {
 
   // ============ xử lý hướng rắn ============
   // Tránh quay 180 độ
-  if (left  && snakeDir != RIGHT)           snakeDir = LEFT;
-  else if (right && snakeDir != LEFT)       snakeDir = RIGHT;
-  else if (up    && snakeDir != DOWN)       snakeDir = UP;
-  else if (down  && snakeDir != UP)         snakeDir = DOWN;
-  else if (forward && snakeDir != BACKWARD) snakeDir = FORWARD;
-  else if (backward && snakeDir != FORWARD) snakeDir = BACKWARD;
-
-  Serial.print("U:"); Serial.print(up);
-  Serial.print(" D:"); Serial.print(down);
-  Serial.print(" L:"); Serial.print(left);
-  Serial.print(" R:"); Serial.print(right);
-  Serial.print(" S:"); Serial.print(start);
-  Serial.print(" C:"); Serial.println(select);
-
-  delay(100);
+  if (left  && snakeDir != RIGHT)           bufferDir = LEFT;
+  else if (right && snakeDir != LEFT)       bufferDir = RIGHT;
+  else if (up    && snakeDir != DOWN)       bufferDir = UP;
+  else if (down  && snakeDir != UP)         bufferDir = DOWN;
+  else if (forward && snakeDir != BACKWARD) bufferDir = FORWARD;
+  else if (backward && snakeDir != FORWARD) bufferDir = BACKWARD;
 }
 
 void updateGameState() { // Nhat Huy
-  // Nếu chưa chạy → bắt đầu ván mới
-  if (!gamestart && !gameover) {
-    initMap();
-    initSnake();   
-    initFood();    
-    gamestart = true;
-    gameover  = false;    
+  // Tạo vector chuyển động và đầu mới
+  Coords coordIncrease = {0, 0, 0}; // X, Y, Z
+  snakeDir = bufferDir;
+  if (snakeDir == FORWARD) coordIncrease.x = 1;
+  if (snakeDir == BACKWARD) coordIncrease.x = -1;
+  if (snakeDir == RIGHT) coordIncrease.y = -1;
+  if (snakeDir == LEFT) coordIncrease.y = 1;
+  if (snakeDir == UP) coordIncrease.z = 1;
+  if (snakeDir == DOWN) coordIncrease.z = -1;
+  Coords newHead = {snake[0].x + coordIncrease.x, snake[0].y + coordIncrease.y, snake[0].z + coordIncrease.z};
+
+  // Xuyên tường (wrap-around)
+  // Kiểm tra có đụng tường ko -> sang tường bên kia
+  if (newHead.x < 0) newHead.x = 5;
+  if (newHead.x > 5) newHead.x = 0;
+
+  if (newHead.y < 0) newHead.y = 5;
+  if (newHead.y > 5) newHead.y = 0;
+
+  if (newHead.z < 0) newHead.z = 5;
+  if (newHead.z > 5) newHead.z = 0;
+
+  // Ăn táo
+  bool ate = (newHead.x == food.x && newHead.y == food.y && newHead.z == food.z);
+  if (ate && bodySize < 216) {
+    snake[bodySize] = snake[bodySize - 1]; // Tạo cục mới là vị trí của cục cuối
+    initFood(); // spawn táo mới (không trùng rắn)
   }
-  if (gamestart && !gameover && millis() - previousTime >= updateInterval) { // Cứ mỗi chu kì Interval thì nó sẽ update game
-    // Tạo vector chuyển động và đầu mới
-    Coords coordIncrease = {0, 0, 0}; // X, Y, Z
-    if (snakeDir == FORWARD) coordIncrease.x = 1;
-    if (snakeDir == BACKWARD) coordIncrease.x = -1;
-    if (snakeDir == RIGHT) coordIncrease.y = -1;
-    if (snakeDir == LEFT) coordIncrease.y = 1;
-    if (snakeDir == UP) coordIncrease.z = 1;
-    if (snakeDir == DOWN) coordIncrease.z = -1;
-    Coords newHead = {snake[0].x + coordIncrease.x, snake[0].y + coordIncrease.y, snake[0].z + coordIncrease.z};
-
-    // Ăn táo
-    bool ate = (newHead.x == food.x && newHead.y == food.y && newHead.z == food.z);
-    if (ate && bodySize < 216) {
-      bodySize++;      // rắn dài thêm 1
-      initFood();      // spawn táo mới (không trùng rắn)
+  // Đẩy cơ thể lên phía trước
+  for (int i = bodySize - 1; i > 0; i--) {
+    //  Chạm cơ thể → đứng yên
+    if (snake[i].x == newHead.x && snake[i].y == newHead.y && snake[i].z == newHead.z) {
+      gameOver = true;
+      return;
     }
-    else {
-      for (int i = bodySize - 1; i > 0; i--) {
-        //  Chạm cơ thể → đứng yên
-        if (snake[i].x == newHead.x && snake[i].y == newHead.y && snake[i].z == newHead.z) {
-          gameover  = true;
-          gamestart = false;
-          if (bodySize >= 6) {
-            showFireworks();  // Khi rắn đủ dài thì hiển thị pháo hoa
-          }
-          return; // Cần điều chỉnh cái này !!!!!!!!!!!!!!!!!!
-        }
-        else snake[i] = snake[i-1]; // Cho rắn duy chuyển phía trước, đẩy đuôi lên đốt tiếp theo
-      }
-    }
-
-    snake[0] = newHead;
-
-    // Xuyên tường (wrap-around)
-if (snake[0].x < 0) snake[0].x = 5;
-if (snake[0].x > 5) snake[0].x = 0;
-
-if (snake[0].y < 0) snake[0].y = 5;
-if (snake[0].y > 5) snake[0].y = 0;
-
-if (snake[0].z < 0) snake[0].z = 5;
-if (snake[0].z > 5) snake[0].z = 0;
- // Kiểm tra có đụng tường ko -> sang tường bên kia
-
-    previousTime = millis(); // Đặt lại thời gian hiện tại
+    else snake[i] = snake[i-1]; // Cho rắn duy chuyển phía trước, đẩy đuôi lên đốt tiếp theo
   }
+  // Update bodySize sau để tránh cục mới tạo bị đẩy lên
+  if (ate) bodySize++;
+  // Tạo đầu mới
+  snake[0] = newHead;
+
+  // Update canvas
+  clearCanvas();
+  renderScene();
+  // SPIPWM();
+
+  // Serial debug
+  if (debug) debugPrint();
 }
 
 //mức sáng: 0 = tắt; 1 = thân sáng vừa; 2 = đầu và táo sáng nhất
@@ -224,37 +580,50 @@ void renderScene() {
 }
 
 void SPIPWM(int freq, int res, float duty) { // Phuoc Khang
+  // pending
+}
 
+void renderChar() {
+  // pending
+}
+
+void debugPrint() {
+  for(int i = 0; i < 20; i++) Serial.println();
+  Serial.println("Food coords: (" + String(food.x) + "," + String(food.y) + "," + String(food.z) + ")");
+  Serial.println("SnakeDir: " + String(snakeDir));
+  printSnake();
+  printCanvas();
 }
 
 void printSnake() {
-  for (int i = 0; i < 5; i++){
-    Serial.print(String(snake[i].x) + "," + String(snake[i].y) + "," + String(snake[i].z) + '\t');
+  Serial.print("Snake: ");
+  for (int i = 0; i < bodySize; i++) {
+    Serial.print(String(i) + " (" + String(snake[i].x) + "," + String(snake[i].y) + "," + String(snake[i].z) + ")" + '\t');
   }
   Serial.println();
 }
 
 void printCanvas() {
-  for (int i = 0; i < 20; i++) {
-    Serial.println(); // Prints a newline character ('\r' and '\n')
-  }
-
   // Prints Canvas
-  for (int z = 0; z < 6; z++) {
-    for (int y = 0; y < 6; y++) {
-      for (int x = 0; x < 6; x++) {
+  Serial.println("Canvas Z level: 0 - 5. Don't ask why this works lmao.");
+
+  // Funny loops, i know, it hurts my brain too but it worked so dont touch - PKhang
+  for (int x = 5; x >= 0; x--) {
+    for (int z = 0; z < 6; z++) {
+      for (int y = 5; y >= 0; y--) {
         Serial.print(canvas[z][y][x]);
         Serial.print(" ");
       }
-      Serial.print('\n');
+      Serial.print('\t');
     }
+    Serial.print('\n');
   }
 }
 
 //------------------ HIỆU ỨNG PHÁO HOA ------------------
 void showFireworks() {
   for (int t = 0; t < 10; t++) { // 10 đợt nổ
-    initMap(); // Xóa toàn bộ LED
+    clearCanvas(); // Xóa toàn bộ LED
 
     int centerX = random(1,5);
     int centerY = random(1,5);
@@ -271,11 +640,9 @@ void showFireworks() {
     }
 
     printCanvas();  // hoặc hàm render LED thực tế
-    delay(180);
+    delay(250);
   }
 
-  initMap();
+  clearCanvas();
   printCanvas(); // Tắt LED sau pháo hoa
-
 }
-
