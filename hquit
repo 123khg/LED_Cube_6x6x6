@@ -1,0 +1,89 @@
+[33mcommit 88335024038ab61ce0e909cdadea80233b2dfbd2[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Fri Dec 12 15:53:29 2025 +0700
+
+    Full Project Code, Missing highscore system and labels, will do later after touching grass
+
+[33mcommit 1e666057d8ab68748d30ef64af15504e385c59f4[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Tue Nov 25 17:48:35 2025 +0700
+
+    Full snake game finished, working on SPIPWM and renderChar functions, fireWorks seems legit, will add highscores later
+
+[33mcommit dd2b30baa37b3ac05cda35ed7a5c9693cf67feb7[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Thu Nov 20 21:08:01 2025 +0700
+
+    PKhang Update schematics
+
+[33mcommit 3a0b71c950e862f49ed246a1c78ec55043dc45c6[m
+Author: Nguyen Phuc Khang <nguyenphuckhang2410@gmail.com>
+Date:   Sun Nov 16 17:48:32 2025 +0700
+
+    them dieu kien di chuyen
+
+[33mcommit 5d04947450d5fa4a22bf470a96fbfa8aaad8fde4[m
+Author: Nguyen Phuc Khang <nguyenphuckhang2410@gmail.com>
+Date:   Sun Nov 16 17:27:13 2025 +0700
+
+    them cac dieu kien di chuyen
+
+[33mcommit b36349c2fcba115f8ea880b0bf83bc498f23ed01[m
+Author: Nguyen Phuc Khang <nguyenphuckhang2410@gmail.com>
+Date:   Sun Nov 16 17:03:12 2025 +0700
+
+    them cac dieu kien kiem tra di chuyen cua ran
+
+[33mcommit 19400516affca6fcd32ff4363b3b9a3a53810bd7[m
+Author: giahuy <huynguyenluugia@gmail.com>
+Date:   Thu Nov 13 17:40:47 2025 +0700
+
+    thêm hiệu ứng pháo hoa + xóa việc chỉnh lệnh return
+
+[33mcommit f24bac777f42a22abd92613fd2730e39b1a6594a[m
+Author: giahuy <huynguyenluugia@gmail.com>
+Date:   Thu Nov 13 17:23:14 2025 +0700
+
+    thêm hiệu ứng pháo hoa Ghuy
+
+[33mcommit f34ef6ce641ff8efdb2b49a40828b07bbb0a2868[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Wed Nov 12 22:59:49 2025 +0700
+
+    Nhat Huy commits: Food Init and Game state check for eating and hitting body
+
+[33mcommit ed204fe4613a0ca3e98b60301df1d4d201f5d620[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Mon Nov 3 20:39:57 2025 +0700
+
+    Refactor lại cấu trúc dự án + add thêm code python PWM Temporal Distribution Linearization:
+
+[33mcommit a6c3565ac3b4d5b1d1b8049954b16011f7253eb5[m
+Author: giahuy <huynguyenluugia@gmail.com>
+Date:   Sat Nov 1 23:20:34 2025 +0700
+
+    đẩy nhánh ghuy lên với nhánh hiện tại
+
+[33mcommit ba7a44d7354bdbb086c4c7cd491d91b86deffc1d[m
+Author: Nguyen Phuc Khang <nguyenphuckhang2410@gmail.com>
+Date:   Sat Nov 1 23:01:10 2025 +0700
+
+    Heloooo
+
+[33mcommit e42202fb181938bf5097ee244f5e5ad138c4d528[m
+Author: Nguyen Phuoc Khang <62598466+123khg@users.noreply.github.com>
+Date:   Sat Nov 1 22:38:46 2025 +0700
+
+    Example if not git pull, git push error
+
+[33mcommit ac3a8e7ff4bd88b3cc42788bcdbec614b05e53d3[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Sat Nov 1 22:32:53 2025 +0700
+
+    Commit example 1
+
+[33mcommit c7d298f4c71c5d5bbe9749d45abeb4539419f1c0[m
+Author: Nguyen Phuoc Khang <khgallgaming@gmail.com>
+Date:   Tue Oct 28 15:19:10 2025 +0700
+
+    Initial Commit

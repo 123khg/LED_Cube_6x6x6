@@ -79,7 +79,7 @@ int fireworksCount = 10;
 int fireworksIdx = 0;
 
 //################ DABBLE ################
-int debugDebounce = 60;
+int debugDebounce = 10;
 bool gameDebug = false;
 int gameDebugFlag = 0;
 bool dabbleDebug = false;
@@ -468,7 +468,7 @@ void gameSetup() {
 
   // Initialize Counters
   spiCounter = {0, 0};
-  dabble = {50, 0};
+  dabble = {10, 0};
   game = {600, 0};
   foodCounter = {150, 0};
   fireworks = {250, 0};
@@ -815,8 +815,14 @@ void debugPinOutput() { // Phuoc Khang
     String cmdState;
     int stateVal;
     // Special command
-    if (cmdSelect == "restart")
+    if (cmdSelect == "restart") {
+      // Flush serial buffer 
+      while (Serial.available() > 0) 
+        char temp = Serial.read();
       ESP.restart();
+    }
+    else if (cmdSelect == "")
+      return;
     
     // if move, skip mode and state
     if (cmdSelect != "move" && cmdSelect != "m") {
@@ -1018,17 +1024,20 @@ void loop() {
     if (fireworksStart) {
       SPIControlHub(fireworksCanvas);
       if (millis() - fireworks.time >= fireworks.interval) {
-        if (fireworksIdx < fireworksCount) {
-          showFireworks();  
-          fireworksIdx++;
-          fireworks.time = millis();
-        }
-        else
-          fireworksStart = false;
+        showFireworks();  
+        fireworksIdx++;
+        fireworks.time = millis();
+      }
+      
+      if (fireworksIdx >= fireworksCount) {
+        if (gameDebug) Serial.println("Game Over");
+        fireworksStart = false;
+        gameStart = false;
       }
     }
     else {
       if (gameDebug) Serial.println("Game Over");
+      fireworksIdx = fireworksCount;
       gameStart = false;
     }
   }
@@ -1037,6 +1046,7 @@ void loop() {
   else if (gameOver) {
     SPIControlHub(gameCanvas);
     if (gameStart) {
+      if (gameDebug) Serial.println("Game Restarted");
       gameSetup();
       fireworksIdx = 0;
       gameOver = false;
