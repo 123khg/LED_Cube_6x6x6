@@ -663,21 +663,125 @@ void renderChar() {
 //-------------------------------------------------------
 //                  HIỆU ỨNG PHÁO HOA
 //-------------------------------------------------------
+// DEMO GIỐNG THEGIOIDIDONG
+// Hiệu ứng 1: Bặt tắt ngẫu nhiên
+void fireworks_Random() {
+  clearCanvas(fireworksCanvas);
+  for (int z = 0; z < 6; z++)
+    for (int y = 0; y < 6; y++)
+      for (int x = 0; x < 6; x++)
+        // Tắt hoặc Bật ngẫu nhiên 
+        fireworksCanvas[z][y][x] = random(0, 2); 
+}
+
+// Hiệu ứng 2: Mô phỏng mưa
+void fireworks_Rain() { // Y như mưa
+  clearCanvas(fireworksCanvas);
+  // Dùng `fireworksIdx` để mô phỏng giọt mưa rơi
+  int layer = fireworksIdx % 6; // Lớp hiện tại (0-5)
+  int y_pos = random(0, 6);
+  int x_pos = random(0, 6);
+  fireworksCanvas[5 - layer][y_pos][x_pos] = 2; // Giọt mưa xuất hiện từ trên xuống
+}
+
+// Hiệu ứng 3: Bật tất cả các LED ở 4 mặt bên ngoài
+void fireworks_Frame6x6() { // Chạy từ dưới lên
+  clearCanvas(fireworksCanvas);
+  for (int z = 0; z < 6; z++) {
+    for (int i = 0; i < 6; i++) {
+      fireworksCanvas[z][0][i] = 2;
+      fireworksCanvas[z][5][i] = 2;
+      fireworksCanvas[z][i][0] = 2;
+      fireworksCanvas[z][i][5] = 2;
+    }
+  }
+}
+
+// Hiệu ứng 4: Mở full LED
+void fireworks_Full() {
+  for (int z = 0; z < 6; z++)
+    for (int y = 0; y < 6; y++)
+      for (int x = 0; x < 6; x++)
+        fireworksCanvas[z][y][x] = 2; 
+}
+
+// Hiệu ứng 5: tại khối 2x2x2 ở giữa nở ra mọi hướng rồi thu lại 2x2x2
+void fireworks_CenterCube() {
+  clearCanvas(fireworksCanvas);
+  int f_rel = fireworksIdx % 10; 
+  int I; 
+  if (f_rel <= 4) {
+    I = f_rel; 
+  } else {
+    I = 9 - f_rel; 
+  }
+  int R = I / 2; 
+  int min_index = 2 - R;
+  int max_index = 3 + R;
+  for (int z = min_index; z <= max_index; z++) {
+    for (int y = min_index; y <= max_index; y++) {
+      for (int x = min_index; x <= max_index; x++) {
+        fireworksCanvas[z][y][x] = 2; 
+      }
+    }
+  }
+}
+
+// Hiệu ứng 6: Quét toàn bộ LED bằng 1 LED từ góc tóe ra theo đường chéo
+void fireworks_Spiral() {
+  clearCanvas(fireworksCanvas);
+  int totalLeds = 216;
+  int currentLed = fireworksIdx % totalLeds;
+  // Logic đơn giản: bật một LED duy nhất theo chỉ số tuần tự
+  int z = currentLed / 36;
+  int y = (currentLed % 36) / 6;
+  int x = (currentLed % 36) % 6;
+  
+  fireworksCanvas[z][y][x] = 2;
+}
+
+void fireworks_Zigzag() {
+
+}
+
 void showFireworks() { // Gia Huy
-  clearCanvas(fireworksCanvas); // Xóa toàn bộ LED
-
-  int centerX = random(1,4);
-  int centerY = random(1,4);
-  int centerZ = random(1,4);
-
-  for (int i = 0; i < 24; i++) {
-    int dx = random(-2,3);
-    int dy = random(-2,3);
-    int dz = random(-2,3);
-    int x = constrain(centerX + dx, 0, 5);
-    int y = constrain(centerY + dy, 0, 5);
-    int z = constrain(centerZ + dz, 0, 5);
-    fireworksCanvas[z][y][x] = 2;  // LED sáng mạnh
+  switch (fireworks.effectIdx) {
+    case 1:
+      fireworks_Random(); // Random On/Off
+      break;
+    case 2:
+      fireworks_Rain(); // Rain
+      break;
+    case 3:
+      fireworks_Frame6x6(); // Frame
+      break;
+    case 4:
+      fireworks_Full(); // Full On
+      break;
+    case 5:
+      fireworks_CenterCube(); // Center Cube
+      break;
+    case 6:
+      fireworks_Spiral(); // Spiral (đơn giản)
+      break;
+    case 7:
+      fireworks_Zigzag();
+    case 0:
+    default: // Pháo hoa ngẫu nhiên
+      clearCanvas(fireworksCanvas);
+      int centerX = random(0,6);
+      int centerY = random(0,6);
+      int centerZ = random(0,6);
+      for (int i = 0; i < 24; i++) {
+        int dx = random(-2,3);
+        int dy = random(-2,3);
+        int dz = random(-2,3);
+        int x = constrain(centerX + dx, 0, 5);
+        int y = constrain(centerY + dy, 0, 5);
+        int z = constrain(centerZ + dz, 0, 5);
+        fireworksCanvas[z][y][x] = 2;
+      }
+      break;
   }
 }
 
