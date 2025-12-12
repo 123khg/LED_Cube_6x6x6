@@ -79,7 +79,7 @@ int fireworksCount = 10;
 int fireworksIdx = 0;
 
 //################ DABBLE ################
-int debugDebounce = 10;
+int debugDebounce = 1000;
 bool gameDebug = false;
 int gameDebugFlag = 0;
 bool dabbleDebug = false;
@@ -468,7 +468,7 @@ void gameSetup() {
 
   // Initialize Counters
   spiCounter = {0, 0};
-  dabble = {10, 0};
+  dabble = {3, 0};
   game = {600, 0};
   foodCounter = {150, 0};
   fireworks = {250, 0};
