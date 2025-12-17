@@ -47,45 +47,59 @@ uint8_t FET[6] = {FET0, FET1, FET2, FET3, FET4, FET5};
 */
 
 struct Counter {
-  double interval; // millis/micros
-  unsigned long time;
+  uint32_t interval; // millis/micros
+  uint32_t time;
 };
-Counter spiCounter, dabble, game, foodCounter, fireworks; // Modify at gameSetup()
+Counter spiCounter, dabble, game, foodCounter, fireworksCounter; // Modify at setup()
 
 //################ GAME SETTINGS ################
 // SPI Settings
 struct SPIConfig {
-  int clock;
-  int bitOrder;
-  int mode;
-  int fps;
-  int res;
-  int duty[5];
-  int layerIdx;
-  int propagationDelay;
+  uint32_t clock;
+  uint8_t bitOrder;
+  uint8_t mode;
+  uint8_t fps;
+  uint8_t pwmRes; // 0 - 7
+  uint8_t minDuty; // %
+  uint8_t maxBodyDuty; // % - To make the head stand out the more gradient it has
 };
-SPIConfig spi = {4*MHz, MSBFIRST, SPI_MODE0, 60, 4, {0, 25, 50, 75, 100}, 0};
+SPIConfig spi = {4*MHz, MSBFIRST, SPI_MODE0, 60, 8, 5, 50};
 SPIClass *vspi = NULL;
 SPISettings settings(spi.clock, spi.bitOrder, spi.mode);
 uint8_t SPIdata[6];
-double layerTime; // ms
+
 // In-game
 bool gameStart = false;
 bool gameOver = false;
 int highscore;
+
 // End-game
-bool fireworksStart = false;
-int fireworksCount = 10;
-int fireworksIdx = 0;
+struct Fireworks {
+  bool start;
+  bool resetGameFlag;
+  bool effectFlag;
+  bool effectIdle;
+  bool effectFinished;
+  int effectIdx;
+};
+Fireworks fireworks = {false, false, false, false, false, 0};
+
+// Idle
+enum FireworksEffects {
+  NORMAL,
+  RANDOM,
+  RAIN,
+  FRAME,
+  FULL,
+  CORNER,
+  CLEAR
+};
 
 //################ DABBLE ################
-int debugDebounce = 1000;
 bool gameDebug = false;
-int gameDebugFlag = 0;
 bool dabbleDebug = false;
-int dabbleDebugFlag = 0;
 bool serialDebug = true;
-int serialDebugFlag = 0;
+Counter gameDebugCounter, dabbleDebugCounter, serialDebugCounter;
 
 //################ Canvas ################
 uint8_t gameCanvas[6][6][6];
@@ -396,8 +410,8 @@ const Glyph6 FONT[128] = {
   {0,1,0,0,0,0},
   {1,1,1,1,1,1}},
 };
-char startMsg[] = "PRESS START TO START";
-char overMsg[] = "THANKS FOR PLAYING";
+const char startMsg[] = "PRESS START TO START";
+const char overMsg[] = "THANKS FOR PLAYING";
 // Chưa làm xong phần hiện lên led cube cái này
 
 //################ SNAKE ################
@@ -440,6 +454,14 @@ void setup() {
     digitalWrite(FET[i], 1);
   }
 
+  // Timing
+  spiCounter.interval = MHz / (spi.fps * 6); // micros
+  dabble.interval = 2; // mllis
+  game.interval = 600; // mllis
+  foodCounter.interval = 150; // mllis
+  fireworksCounter.interval = 250; // mllis
+  gameDebugCounter.interval = dabbleDebugCounter.interval = serialDebugCounter.interval = 3000; // mllis
+
   gameSetup();
 }
 
@@ -467,15 +489,12 @@ void gameSetup() {
   initFood();
 
   // Initialize Counters
-  spiCounter = {0, 0};
-  dabble = {3, 0};
-  game = {600, 0};
-  foodCounter = {150, 0};
-  fireworks = {250, 0};
-
-  // Calculate SPI and PWM
-  layerTime = (double) MHz / (spi.fps * 6.0); // micros
-  spiCounter.interval = layerTime;
+  spiCounter.time = micros();
+  dabble.time = millis();
+  game.time = millis();
+  foodCounter.time = millis();
+  fireworksCounter.time = millis();
+  gameDebugCounter.time = dabbleDebugCounter.time = serialDebugCounter.time = millis();
 }
 
 void initSnake() {
@@ -527,27 +546,27 @@ void getInput() { // Phuc Khang
   bool select = GamePad.isSelectPressed();
 
   // Debug
-  if (GamePad.isCirclePressed()) gameDebugFlag += 1;
-  else gameDebugFlag = 0;
-  if (GamePad.isSquarePressed()) dabbleDebugFlag += 1;
-  else dabbleDebugFlag = 0;
-  if (GamePad.isSelectPressed()) serialDebugFlag += 1;
-  else serialDebugFlag = 0;
+  if (!GamePad.isCirclePressed())
+    gameDebugCounter.time = millis();
+  if (!GamePad.isSquarePressed())
+    dabbleDebugCounter.time = millis();
+  if (!GamePad.isSelectPressed())
+    serialDebugCounter.time = millis();
 
-  if (gameDebugFlag >= debugDebounce) {
+  if (millis() - gameDebugCounter.time >= gameDebugCounter.interval) {
     gameDebug = !gameDebug;
     Serial.println("Print debug toggled: " + String(gameDebug));
-    gameDebugFlag = 0;
+    gameDebugCounter.time = millis();
   }
-  if (dabbleDebugFlag >= debugDebounce) {
+  if (millis() - dabbleDebugCounter.time >= dabbleDebugCounter.interval) {
     dabbleDebug = !dabbleDebug;
     Serial.println("Dabble debug toggled: " + String(dabbleDebug));
-    dabbleDebugFlag = 0;
+    dabbleDebugCounter.time = millis();
   }
-  if (serialDebugFlag >= debugDebounce) {
+  if (millis() - serialDebugCounter.time >= serialDebugCounter.interval) {
     serialDebug = !serialDebug;
     Serial.println("Serial debug toggled: " + String(serialDebug));
-    serialDebugFlag = 0;
+    serialDebugCounter.time = millis();
   }
 
   if (dabbleDebug) {
@@ -564,6 +583,9 @@ void getInput() { // Phuc Khang
   // Start game
   if (start && !gameStart) {
     gameStart = true;
+    fireworks.effectFlag = false;
+    fireworks.effectIdle = false;
+    fireworks.effectIdx = NORMAL;
     game.time = millis();
   }
 
@@ -640,20 +662,19 @@ void clearSnake() {
   }
 }
 
-//mức sáng: 0 = tắt; 1 = thân sáng vừa; 2 = đầu và táo sáng nhất
+// Đầu sáng nhất 100% duty rồi giảm dần xuống minDuty (30%)
 void renderSnake() { // Nhat Huy
-  // Thân rắn = 1, Đầu rắn = 2
+  float dutyDecrease = (spi.maxBodyDuty - spi.minDuty)/(bodySize-1);
   for (int i = 0; i < bodySize; i++) {    
     Coords p = snake[i];
-    if (i == 0) gameCanvas[p.z][p.y][p.x] = 2;
-    else gameCanvas[p.z][p.y][p.x] = 1;
+    if (i == 0) gameCanvas[p.z][p.y][p.x] = 100;
+    else gameCanvas[p.z][p.y][p.x] = (uint8_t) floor(spi.maxBodyDuty - (i-1)*dutyDecrease);
   }
 }
 
 void renderFood() { // Nhat Huy
-  // Táo = 2
   // Làm cho táo nhấp nháy (Nếu chưa sáng thì sáng, nếu sáng thì tắt)
-  gameCanvas[food.z][food.y][food.x] = (gameCanvas[food.z][food.y][food.x] > 0) ? 0 : 2;
+  gameCanvas[food.z][food.y][food.x] = (gameCanvas[food.z][food.y][food.x] > 0) ? 0 : 100;
 }
 
 void renderChar() {
@@ -664,37 +685,177 @@ void renderChar() {
 //                  HIỆU ỨNG PHÁO HOA
 //-------------------------------------------------------
 // DEMO GIỐNG THEGIOIDIDONG
+// Shared idle-effect timer
+void checkIdleEffectFinished(uint8_t iterations) {
+  static uint8_t iterationCount = 0;
+
+  if (iterationCount >= iterations) {
+    fireworks.effectFinished = true;
+    iterationCount = 0;
+  }
+  else
+    iterationCount++;
+}
+
+// Hiệu ứng 0: Pháo hoa bình thường
+void fireworks_Normal() {
+  clearCanvas(fireworksCanvas);
+  int centerX = random(0,6);
+  int centerY = random(0,6);
+  int centerZ = random(0,6);
+  for (int i = 0; i < 24; i++) {
+    int dx = random(-2,3);
+    int dy = random(-2,3);
+    int dz = random(-2,3);
+    int x = constrain(centerX + dx, 0, 6);
+    int y = constrain(centerY + dy, 0, 6);
+    int z = constrain(centerZ + dz, 0, 6);
+    fireworksCanvas[z][y][x] = 100;
+  }
+  checkIdleEffectFinished(12);
+}
+
 // Hiệu ứng 1: Bặt tắt ngẫu nhiên
 void fireworks_Random() {
   clearCanvas(fireworksCanvas);
-  for (int z = 0; z < 6; z++)
-    for (int y = 0; y < 6; y++)
-      for (int x = 0; x < 6; x++)
-        // Tắt hoặc Bật ngẫu nhiên 
-        fireworksCanvas[z][y][x] = random(0, 2); 
+  for (int z = 0; z < 6; z++) {
+    for (int y = 0; y < 6; y++) {
+      for (int x = 0; x < 6; x++) {
+        // Tắt hoặc Bật ngẫu nhiên
+        int chance = random(0, 2);
+        if (chance)
+          fireworksCanvas[z][y][x] = 100; 
+      }
+    }
+  }
+  checkIdleEffectFinished(12);
 }
 
 // Hiệu ứng 2: Mô phỏng mưa
 void fireworks_Rain() { // Y như mưa
-  clearCanvas(fireworksCanvas);
-  // Dùng `fireworksIdx` để mô phỏng giọt mưa rơi
-  int layer = fireworksIdx % 6; // Lớp hiện tại (0-5)
-  int y_pos = random(0, 6);
-  int x_pos = random(0, 6);
-  fireworksCanvas[5 - layer][y_pos][x_pos] = 2; // Giọt mưa xuất hiện từ trên xuống
-}
-
-// Hiệu ứng 3: Bật tất cả các LED ở 4 mặt bên ngoài
-void fireworks_Frame6x6() { // Chạy từ dưới lên
-  clearCanvas(fireworksCanvas);
   for (int z = 0; z < 6; z++) {
-    for (int i = 0; i < 6; i++) {
-      fireworksCanvas[z][0][i] = 2;
-      fireworksCanvas[z][5][i] = 2;
-      fireworksCanvas[z][i][0] = 2;
-      fireworksCanvas[z][i][5] = 2;
+    for (int y = 0; y < 6; y++) {
+      for (int x = 0; x < 6; x++) {
+        if (z == 0)
+          fireworksCanvas[z][y][x] = 0;
+        else if (fireworksCanvas[z][y][x] > 0) {
+          fireworksCanvas[z][y][x] = 0;
+          fireworksCanvas[z-1][y][x] = 100;
+        }
+
+        if (z == 5) {
+          int rand = random(0, 7);
+          if (rand == 1)
+            fireworksCanvas[z][y][x] = 100;
+          else
+            fireworksCanvas[z][y][x] = 0;
+        }
+      }
     }
   }
+  checkIdleEffectFinished(20);
+}
+
+// Hiệu ứng 3: Bật tất cả các LED ở 4 mặt bên ngoài 
+void fireworks_Frame() {
+  uint8_t (&canvas)[6][6][6] = fireworksCanvas;
+  static uint8_t lastEffect = 255;
+
+  if (lastEffect != fireworks.effectIdx) {
+    lastEffect = fireworks.effectIdx;
+    clearCanvas(canvas);
+  }
+
+  bool xyCornerPlane = canvas[0][5][5];
+  bool xyMidPlane    = canvas[0][2][2];
+  bool yzCornerPlane = canvas[5][5][0];
+  bool yzMidPlane    = canvas[2][2][0];
+  bool zxCornerPlane = canvas[5][0][5];
+  bool zxMidPlane    = canvas[2][0][2];
+
+  // XY → Z
+  if (xyCornerPlane && !xyMidPlane) {
+    for (uint8_t z = 0; z < 6; z++) {
+      if (!canvas[z][0][0]) {
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[z][i][0] = 100;
+          canvas[z][i][5] = 100;
+          canvas[z][0][i] = 100;
+          canvas[z][5][i] = 100;
+        }
+        break;
+      }
+      if (z == 5) {
+        clearCanvas(canvas);
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[i][0][0] = 100;
+          canvas[i][5][0] = 100;
+          canvas[0][i][0] = 100;
+          canvas[5][i][0] = 100;
+        }
+      }
+    }
+  }
+
+  // YZ → X
+  else if (yzCornerPlane && !yzMidPlane) {
+    for (uint8_t x = 0; x < 6; x++) {
+      if (!canvas[0][0][x]) {
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[i][0][x] = 100;
+          canvas[i][5][x] = 100;
+          canvas[0][i][x] = 100;
+          canvas[5][i][x] = 100;
+        }
+        break;
+      }
+      if (x == 5) {
+        clearCanvas(canvas);
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[0][0][i] = 100;
+          canvas[5][0][i] = 100;
+          canvas[i][0][0] = 100;
+          canvas[i][0][5] = 100;
+        }
+      }
+    }
+  }
+
+  // ZX → Y
+  else if (zxCornerPlane && !zxMidPlane) {
+    for (uint8_t y = 0; y < 6; y++) {
+      if (!canvas[0][y][0]) {
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[i][y][0] = 100;
+          canvas[i][y][5] = 100;
+          canvas[0][y][i] = 100;
+          canvas[5][y][i] = 100;
+        }
+        break;
+      }
+      if (y == 5) {
+        clearCanvas(canvas);
+        for (uint8_t i = 0; i < 6; i++) {
+          canvas[0][0][i] = 100;
+          canvas[0][5][i] = 100;
+          canvas[0][i][0] = 100;
+          canvas[0][i][5] = 100;
+        }
+      }
+    }
+  }
+  // If cube is empty, initiate xyPlane
+  else {
+    clearCanvas(canvas);
+    for (uint8_t i = 0; i < 6; i++) {
+      canvas[0][0][i] = 100;
+      canvas[0][5][i] = 100;
+      canvas[0][i][0] = 100;
+      canvas[0][i][5] = 100;
+    }
+  }
+
+  checkIdleEffectFinished(17);
 }
 
 // Hiệu ứng 4: Mở full LED
@@ -702,86 +863,70 @@ void fireworks_Full() {
   for (int z = 0; z < 6; z++)
     for (int y = 0; y < 6; y++)
       for (int x = 0; x < 6; x++)
-        fireworksCanvas[z][y][x] = 2; 
+        fireworksCanvas[z][y][x] = 100; 
+  checkIdleEffectFinished(12);
 }
 
-// Hiệu ứng 5: tại khối 2x2x2 ở giữa nở ra mọi hướng rồi thu lại 2x2x2
-void fireworks_CenterCube() {
+// Hiệu ứng 5: Cube từ (0, 0, 0) lớn dần lên rồi nhỏ lại tại (5, 5, 5)
+void fireworks_CornerCube() {
+  static int phase = 0;
+  static uint8_t lastEffect = 255;
+
+  if (lastEffect != fireworks.effectIdx) {
+    lastEffect = fireworks.effectIdx;
+    phase = 0;
+  }
+
   clearCanvas(fireworksCanvas);
-  int f_rel = fireworksIdx % 10; 
-  int I; 
-  if (f_rel <= 4) {
-    I = f_rel; 
+  int size;
+
+  // Grow 0 → 5, then shrink 5 → 0
+  if (phase <= 5) {
+    size = phase;
+    // Growing cube anchored at (0,0,0)
+    for (int z = 0; z <= size; z++)
+      for (int y = 0; y <= size; y++)
+        for (int x = 0; x <= size; x++)
+          fireworksCanvas[z][y][x] = 100;
   } else {
-    I = 9 - f_rel; 
+    size = 11 - phase;
+    // Shrinking cube anchored at (5,5,5)
+    int start = 5 - size;
+    for (int z = start; z <= 5; z++)
+      for (int y = start; y <= 5; y++)
+        for (int x = start; x <= 5; x++)
+          fireworksCanvas[z][y][x] = 100;
   }
-  int R = I / 2; 
-  int min_index = 2 - R;
-  int max_index = 3 + R;
-  for (int z = min_index; z <= max_index; z++) {
-    for (int y = min_index; y <= max_index; y++) {
-      for (int x = min_index; x <= max_index; x++) {
-        fireworksCanvas[z][y][x] = 2; 
-      }
-    }
-  }
-}
 
-// Hiệu ứng 6: Quét toàn bộ LED bằng 1 LED từ góc tóe ra theo đường chéo
-void fireworks_Spiral() {
-  clearCanvas(fireworksCanvas);
-  int totalLeds = 216;
-  int currentLed = fireworksIdx % totalLeds;
-  // Logic đơn giản: bật một LED duy nhất theo chỉ số tuần tự
-  int z = currentLed / 36;
-  int y = (currentLed % 36) / 6;
-  int x = (currentLed % 36) % 6;
-  
-  fireworksCanvas[z][y][x] = 2;
-}
+  phase++;
+  if (phase > 11)
+    phase = 0;
 
-void fireworks_Zigzag() {
-
+  checkIdleEffectFinished(23);
 }
 
 void showFireworks() { // Gia Huy
   switch (fireworks.effectIdx) {
-    case 1:
+    case CLEAR:
+      clearCanvas(fireworksCanvas);
+      break;
+    case RANDOM:
       fireworks_Random(); // Random On/Off
       break;
-    case 2:
+    case RAIN:
       fireworks_Rain(); // Rain
       break;
-    case 3:
-      fireworks_Frame6x6(); // Frame
+    case FRAME:
+      fireworks_Frame(); // Frame
       break;
-    case 4:
+    case FULL:
       fireworks_Full(); // Full On
       break;
-    case 5:
-      fireworks_CenterCube(); // Center Cube
+    case CORNER:
+      fireworks_CornerCube(); // Corner Cube
       break;
-    case 6:
-      fireworks_Spiral(); // Spiral (đơn giản)
-      break;
-    case 7:
-      fireworks_Zigzag();
-    case 0:
-    default: // Pháo hoa ngẫu nhiên
-      clearCanvas(fireworksCanvas);
-      int centerX = random(0,6);
-      int centerY = random(0,6);
-      int centerZ = random(0,6);
-      for (int i = 0; i < 24; i++) {
-        int dx = random(-2,3);
-        int dy = random(-2,3);
-        int dz = random(-2,3);
-        int x = constrain(centerX + dx, 0, 5);
-        int y = constrain(centerY + dy, 0, 5);
-        int z = constrain(centerZ + dz, 0, 5);
-        fireworksCanvas[z][y][x] = 2;
-      }
-      break;
+    case NORMAL: // Pháo hoa ngẫu nhiên
+      fireworks_Normal();
   }
 }
 
@@ -824,8 +969,20 @@ void SPIByteMapping(const uint8_t layer[6][6], uint8_t (&out)[6]) { // Phuoc Kha
   // Serial.println();
 }
 
-void PWMCalc(int freq, int res, float duty) { // Phuoc Khang
-  // 
+void PWMCalc(uint8_t phase, uint8_t (&layer)[6][6], uint8_t (&out)[6][6]) {
+  static const uint16_t cycles = 1 << spi.pwmRes;
+
+  for (int y = 0; y < 6; y++) {
+    for (int x = 0; x < 6; x++) {
+      if (layer[y][x] == 0) {
+        out[y][x] = 0;
+      } else {
+        // Map duty percentage to linearized temporal slots
+        uint16_t onBits = (layer[y][x] * cycles) / 100;
+        out[y][x] = ((phase * onBits) % cycles) < onBits;
+      }
+    }
+  }
 }
 
 void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
@@ -848,27 +1005,31 @@ void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
   digitalWrite(LATCH, 0);
 }
 
-void SPIControlHub(uint8_t (&canvas)[6][6][6]){ // Phuoc Khang
-  SPIByteMapping(canvas[spi.layerIdx], SPIdata);
-  // PWMCalc();
-  SPIOutput(SPIdata, spi.layerIdx);
-  
-  if (micros() - spiCounter.time >= spiCounter.interval)
-    spi.layerIdx++;
-    if (spi.layerIdx > 5)
-      spi.layerIdx = 0;
+void SPIControlHub(uint8_t (&canvas)[6][6][6]) {
+  static uint8_t pwmPhase = 0;
+  static uint8_t layerIdx = 0;
+  static const uint16_t cycles = 1 << spi.pwmRes;
+  uint8_t pwmLayer[6][6];
+
+  PWMCalc(pwmPhase, canvas[layerIdx], pwmLayer);
+  SPIByteMapping(pwmLayer, SPIdata);
+  SPIOutput(SPIdata, layerIdx);
+
+  pwmPhase++;
+  if (pwmPhase >= cycles)
+    pwmPhase = 0;
+
+  if (micros() - spiCounter.time >= spiCounter.interval) {
+    layerIdx++;
+    if (layerIdx > 5)
+      layerIdx = 0;
+    spiCounter.time = micros();
+  }
 }
+
 //-------------------------------------------------------
 //                      DEBUGGING
 //-------------------------------------------------------
-void debugPrint() {
-  for(int i = 0; i < 20; i++) Serial.println();
-  Serial.println("Food coords: (" + String(food.x) + "," + String(food.y) + "," + String(food.z) + ")");
-  Serial.println("SnakeDir: " + String(snakeDir));
-  printSnake();
-  printCanvas();
-}
-
 void printSnake() {
   Serial.print("Snake: ");
   for (int i = 0; i < bodySize; i++) {
@@ -877,21 +1038,26 @@ void printSnake() {
   Serial.println();
 }
 
-void printCanvas() {
-  // Prints gameCanvas
-  Serial.println("gameCanvas Z level: 0 - 5. Don't ask why this works lmao.");
-
+void printCanvas(uint8_t (&canvas)[6][6][6]) {
   // Funny loops, i know, it hurts my brain too but it worked so dont touch - PKhang
   for (int x = 5; x >= 0; x--) {
     for (int z = 0; z < 6; z++) {
       for (int y = 5; y >= 0; y--) {
-        Serial.print(gameCanvas[z][y][x]);
+        Serial.print(canvas[z][y][x]);
         Serial.print(" ");
       }
       Serial.print('\t');
     }
     Serial.print('\n');
   }
+}
+
+void debugPrint() {
+  for(int i = 0; i < 20; i++) Serial.println();
+  Serial.println("Food coords: (" + String(food.x) + "," + String(food.y) + "," + String(food.z) + ")");
+  Serial.println("SnakeDir: " + String(snakeDir));
+  printSnake();
+  printCanvas(gameCanvas);
 }
 
 String readWord() {
@@ -911,10 +1077,10 @@ String readWord() {
   return word;
 }
 
-void debugPinOutput() { // Phuoc Khang
+void serialCommand() { // Phuoc Khang
   if (Serial.available() > 0) {
     bool valid = true;
-    String cmdSelect = readWord();   // "fet", "mbi", "config", "debug", "game", "restart", {"w", "a", "s", "d", "q", "e"}
+    String cmdSelect = readWord(); // "fet", "mbi", "config", "debug", "game", "effect", "restart", {"w", "a", "s", "d", "q", "e"}
     String cmdMode;
     String cmdState;
     int stateVal;
@@ -936,29 +1102,32 @@ void debugPinOutput() { // Phuoc Khang
         {"spi", "gameInterval", "dabbleInterval", "foodInterval"} - for config
         {"game", "dabble", "serial"} - for debug
         {"start", "over"} - for game
+        {"normal", "random", "rain", "frame", "full", "corner", "spiral", "zigzag"} - for effect
       */
-
-      // check cmdState for numbers
-      cmdState = readWord();   // "1" or "0"
-      // if "config spi", validate cmdState must be exactly one char and isdigit
-      if (cmdMode == "spi" && (cmdState.length() != 1 || !isdigit(cmdState[0]))) {
+      // if fet, check cmdMode for numbers
+      if (cmdSelect == "fet" && (cmdMode.length() != 1 || !isdigit(cmdMode[0])))
         valid = false;
-      }
-      stateVal = cmdState.toInt();
-    }
 
-    if (valid && cmdSelect == "fet") {
-      if (cmdMode.length() == 1 && isdigit(cmdMode[0])) {
-        int index = cmdMode.toInt();
-        if (index >= 0 && index < 6) {
-          digitalWrite(FET[index], stateVal);
-          Serial.println("FET pin " + cmdMode + " set to " + cmdState);
-        } else {
+      // if not effect, check cmdState for numbers
+      if (cmdSelect != "effect") {
+        cmdState = readWord();   // "1" or "0" for spi
+        // if "config spi", validate cmdState must be exactly one char and isdigit
+        if ((cmdSelect == "fet" || cmdSelect == "mbi" || cmdMode == "spi") && (cmdState.length() != 1 || !isdigit(cmdState[0]))) {
           valid = false;
         }
-      } else {
-        valid = false;
+        stateVal = cmdState.toInt();
       }
+    }
+    
+    // Process command
+    if (valid && cmdSelect == "fet") {
+      int index = cmdMode.toInt();
+      if (index >= 0 && index < 6) {
+        digitalWrite(FET[index], stateVal);
+        Serial.println("FET pin " + cmdMode + " set to " + cmdState);
+      }
+      else
+        valid = false;
     }
     else if (valid && cmdSelect == "mbi") {
       if (cmdMode == "data") {
@@ -1005,7 +1174,7 @@ void debugPinOutput() { // Phuoc Khang
         Serial.println("Food interval set to " + cmdState);
       }
       else if (cmdMode.equalsIgnoreCase("fireworksInterval")) {
-        fireworks.interval = cmdState.toInt();
+        fireworksCounter.interval = cmdState.toInt();
         Serial.println("Food interval set to " + cmdState);
       }
       else
@@ -1030,6 +1199,12 @@ void debugPinOutput() { // Phuoc Khang
     else if (valid && cmdSelect == "game") {
       if (cmdMode == "start") {
         gameStart = cmdState.toInt();
+        if (gameStart) {
+          fireworks.effectFlag = false;
+          fireworks.effectIdle = false;
+          fireworks.effectIdx = NORMAL;
+          game.time = millis();
+        }
         Serial.println("gameStart set to " + cmdState);
       }
       else if (cmdMode == "over") {
@@ -1038,6 +1213,39 @@ void debugPinOutput() { // Phuoc Khang
       }
       else
         valid = false;
+    }
+    else if (valid && cmdSelect == "effect") {
+      fireworks.effectIdle = false;
+      fireworks.effectIdx = -1; // Temp value to compare
+      if (cmdMode == "normal")
+        fireworks.effectIdx = NORMAL;
+      else if (cmdMode == "random")
+        fireworks.effectIdx = RANDOM;
+      else if (cmdMode == "rain")
+        fireworks.effectIdx = RAIN;
+      else if (cmdMode == "frame")
+        fireworks.effectIdx = FRAME;
+      else if (cmdMode == "full")
+        fireworks.effectIdx = FULL;
+      else if (cmdMode == "corner")
+        fireworks.effectIdx = CORNER;
+      else if (cmdMode == "idle") {
+        fireworks.effectIdle = true;
+        fireworks.effectIdx = NORMAL;
+      }
+      else if (cmdMode == "0")
+        fireworks.effectIdx = CLEAR;
+      else
+        valid = false;
+
+      if (fireworks.effectIdx == -1)
+        fireworks.effectIdx = NORMAL;
+      else {
+        fireworks.effectFlag = true;
+        gameStart = false;
+        gameOver = true;
+        Serial.println("Effects Mode: " + cmdMode);
+      }
     }
     else if (valid) {
       char dir = cmdSelect[0];
@@ -1093,6 +1301,34 @@ void loop() {
     dabble.time = millis();
   }
 
+  // Idle mode
+  if (fireworks.effectFlag) {
+    SPIControlHub(fireworksCanvas);
+
+    if (fireworks.effectIdx == CLEAR)
+      fireworks.effectFlag = false;
+
+    if (millis() - fireworksCounter.time >= fireworksCounter.interval) {
+      showFireworks();
+      fireworksCounter.time = millis();
+    }
+
+    if (fireworks.effectFinished) {
+      if (gameDebug)
+        Serial.println("Finished Effect: " + String(fireworks.effectIdx));
+
+      fireworks.effectFinished = false;
+
+      if (fireworks.effectIdle) {
+        fireworks.effectIdx++;
+
+        if (fireworks.effectIdx >= CLEAR) {
+          fireworks.effectIdx = NORMAL;
+        }
+      }
+    }
+  }
+
   // Pre-game
   if (!gameStart && !gameOver) {
     if (gameDebug) Serial.println("Game hasn't started yet, press 'Start' to start =)).");
@@ -1120,42 +1356,48 @@ void loop() {
   } 
 
   // Game Over and Fireworks
-  else if (gameStart && gameOver && fireworksIdx < fireworksCount) {
+  else if (gameStart && gameOver && !fireworks.resetGameFlag) {
     // Khi rắn đủ dài thì hiển thị pháo hoa
-    if (bodySize >= 6 && fireworksIdx == 0)
-      fireworksStart = true;
+    if (bodySize >= 6 && !fireworks.start) {
+      fireworks.effectIdx = 0;
+      fireworks.start = true;
+    }
     
-    if (fireworksStart) {
+    if (fireworks.start) {
       SPIControlHub(fireworksCanvas);
-      if (millis() - fireworks.time >= fireworks.interval) {
-        showFireworks();  
-        fireworksIdx++;
-        fireworks.time = millis();
+      if (millis() - fireworksCounter.time >= fireworksCounter.interval) {
+        showFireworks();
+        fireworksCounter.time = millis();
       }
       
-      if (fireworksIdx >= fireworksCount) {
+      if (fireworks.effectFinished) {
         if (gameDebug) Serial.println("Game Over");
-        fireworksStart = false;
+        fireworks.start = false;
+        fireworks.effectFinished = false;
+        fireworks.resetGameFlag = true;
         gameStart = false;
       }
     }
     else {
       if (gameDebug) Serial.println("Game Over");
-      fireworksIdx = fireworksCount;
+      fireworks.effectFinished = false;
+      fireworks.resetGameFlag = true;
       gameStart = false;
     }
   }
 
   // Restart game *Once*
-  else if (gameOver) {
-    SPIControlHub(gameCanvas);
+  else if (gameOver && fireworks.resetGameFlag) {
+    if (!fireworks.effectFlag)
+      SPIControlHub(gameCanvas);
+
     if (gameStart) {
       if (gameDebug) Serial.println("Game Restarted");
       gameSetup();
-      fireworksIdx = 0;
+      fireworks.resetGameFlag = false;
       gameOver = false;
     }
   }
 
-  if (serialDebug) debugPinOutput();
+  if (serialDebug) serialCommand();
 }
