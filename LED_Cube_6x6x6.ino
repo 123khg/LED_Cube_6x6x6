@@ -7,6 +7,17 @@
 #include <DabbleESP32.h>
 #define BLUETOOTH_NAME "ESP32_Snake"
 
+//################ STM32 I2C COMMS ################
+#include <Wire.h>
+#define SDA 21
+#define SCL 22
+#define STM32CheckPin 4 // Input pull-down
+#define I2C_STM32_ADDR 0x2A
+uint8_t I2CData[8];
+uint8_t I2CDataIdx = 0;
+// If STM32 is plugged in, 3.3V will be connected to
+// this pin and signal ESP32 to switch to Bluetooth-only mode
+
 //################ MBI5026 ################
 #include <SPI.h>
 #define MHz 1000000
@@ -50,9 +61,12 @@ struct Counter {
   uint32_t interval; // millis/micros
   uint32_t time;
 };
-Counter spiCounter, dabble, game, foodCounter, fireworksCounter; // Modify at setup()
+Counter spiCounter, dabble, game, foodCounter, fireworksCounter, STM32Counter; // Modify at setup()
 
 //################ GAME SETTINGS ################
+// ESP32 Drive/Bluetooth-only mode
+bool STM32CheckFlag = false;
+
 // SPI Settings
 struct SPIConfig {
   uint32_t clock;
@@ -438,63 +452,58 @@ Coords food;
 
 void setup() {
   Serial.begin(115200);
+  Wire.begin(SDA, SCL);
   Dabble.begin(BLUETOOTH_NAME);
   Serial.println("Dabble ready. Waiting for connection...");
-
-  pinMode(LATCH, OUTPUT);
-  pinMode(OE, OUTPUT);
-  vspi = new SPIClass();
-  vspi->begin(SCK, MISO, MOSI, LATCH);
-
-  digitalWrite(OE, 1);
-  digitalWrite(LATCH, 0);
-
-  for (int i = 0; i<6; i++) {
-    pinMode(FET[i], OUTPUT);
-    digitalWrite(FET[i], 1);
-  }
-
+  
   // Timing
   spiCounter.interval = MHz / (spi.fps * 6); // micros
-  dabble.interval = 2; // mllis
-  game.interval = 600; // mllis
-  foodCounter.interval = 150; // mllis
-  fireworksCounter.interval = 250; // mllis
-  gameDebugCounter.interval = dabbleDebugCounter.interval = serialDebugCounter.interval = 3000; // mllis
+  dabble.interval = 2; // millis
+  game.interval = 600; // millis
+  foodCounter.interval = 150; // millis
+  fireworksCounter.interval = 250; // millis
+  gameDebugCounter.interval = dabbleDebugCounter.interval = serialDebugCounter.interval = 3000; // millis
+  STM32Counter.interval = 500; // millis
 
-  gameSetup();
+  Serial.println("Checking if STM32 is connected");
+  pinMode(STM32CheckPin, INPUT_PULLDOWN);
+  STM32Counter.time = millis();
+  while (millis() - STM32Counter.time < STM32Counter.interval) {
+    if (digitalRead(STM32CheckPin)) {
+      Serial.println("STM32 is connected, switching to Bluetooth-only mode");
+      initCounters();
+      STM32CheckFlag = true;
+      break;
+    }
+  }
+  if (!STM32CheckFlag) {
+    Serial.println("STM32 is not connected, switching to Drive mode");
+    pinMode(LATCH, OUTPUT);
+    pinMode(OE, OUTPUT);
+    vspi = new SPIClass();
+    vspi->begin(SCK, MISO, MOSI, LATCH);
+
+    digitalWrite(OE, 1);
+    digitalWrite(LATCH, 0);
+
+    for (int i = 0; i<6; i++) {
+      pinMode(FET[i], OUTPUT);
+      digitalWrite(FET[i], 1);
+    }
+
+    gameSetup();
+  }
 }
 
 //-------------------------------------------------------
 //                    INITIALIZATION
 //-------------------------------------------------------
 void clearCanvas(uint8_t (&canvas)[6][6][6]) {
-  for (int z = 0; z < 6; z++)
-    for (int y = 0; y < 6; y++)
-      for (int x = 0; x < 6; x++)
-        canvas[z][y][x] = 0;
-}
-
-void gameSetup() {
-  // Setup fireworks
-  clearCanvas(fireworksCanvas);
-  // Setup labels
-  clearCanvas(labelCanvas);
-  // Setup game
-  clearCanvas(gameCanvas);
-
-  bodySize = 3;
-  snakeDir = random(0, 3);
-  initSnake();   
-  initFood();
-
-  // Initialize Counters
-  spiCounter.time = micros();
-  dabble.time = millis();
-  game.time = millis();
-  foodCounter.time = millis();
-  fireworksCounter.time = millis();
-  gameDebugCounter.time = dabbleDebugCounter.time = serialDebugCounter.time = millis();
+  memset(canvas, 0, sizeof(canvas));
+  // for (int z = 0; z < 6; z++)
+  //   for (int y = 0; y < 6; y++)
+  //     for (int x = 0; x < 6; x++)
+  //       canvas[z][y][x] = 0;
 }
 
 void initSnake() {
@@ -527,6 +536,31 @@ void initFood() { // Nhat Huy
       }
     }
   } while (check);
+}
+
+void initCounters() {
+  spiCounter.time = micros();
+  dabble.time = millis();
+  game.time = millis();
+  foodCounter.time = millis();
+  fireworksCounter.time = millis();
+  gameDebugCounter.time = dabbleDebugCounter.time = serialDebugCounter.time = millis();
+}
+
+void gameSetup() {
+  // Setup fireworks
+  clearCanvas(fireworksCanvas);
+  // Setup labels
+  clearCanvas(labelCanvas);
+  // Setup game
+  clearCanvas(gameCanvas);
+
+  bodySize = 3;
+  snakeDir = random(0, 3);
+  initSnake();   
+  initFood();
+
+  initCounters();
 }
 
 //-------------------------------------------------------
@@ -564,9 +598,14 @@ void getInput() { // Phuc Khang
     dabbleDebugCounter.time = millis();
   }
   if (millis() - serialDebugCounter.time >= serialDebugCounter.interval) {
-    serialDebug = !serialDebug;
-    Serial.println("Serial debug toggled: " + String(serialDebug));
-    serialDebugCounter.time = millis();
+    fireworks.effectIdle = true;
+    fireworks.effectIdx = NORMAL;
+    fireworks.effectFlag = true;
+    gameStart = false;
+    gameOver = true;
+    // serialDebug = !serialDebug;
+    // Serial.println("Serial debug toggled: " + String(serialDebug));
+    // serialDebugCounter.time = millis();
   }
 
   if (dabbleDebug) {
@@ -650,6 +689,21 @@ void updateGameState() { // Nhat Huy
   if (ate) bodySize++;
   // Tạo đầu mới
   snake[0] = newHead;
+}
+
+//-------------------------------------------------------
+//                       I2C STM32
+//-------------------------------------------------------
+void sendI2C() {
+  I2CData[I2CDataIdx++] = gameStart;
+  I2CData[I2CDataIdx++] = fireworks.effectIdle;
+  I2CData[I2CDataIdx++] = bufferDir;
+  Serial.println("Sending " + String(I2CDataIdx) + " bytes to address " + String(I2C_STM32_ADDR) + ": " + String(I2CData[0]) + " " + String(I2CData[1]) + " " + String(I2CData[2]));
+
+  Wire.beginTransmission(I2C_STM32_ADDR);
+  Wire.write(I2CData, I2CDataIdx);
+  Wire.endTransmission();
+  I2CDataIdx = 0;
 }
 
 //-------------------------------------------------------
@@ -1093,6 +1147,13 @@ void serialCommand() { // Phuoc Khang
     }
     else if (cmdSelect == "")
       return;
+    else if (STM32CheckFlag && (cmdSelect == "fet" || cmdSelect == "mbi" || cmdSelect == "config")) {
+      Serial.println("STM32 is plugged in, do not fuck with this hardware command: " + cmdSelect);
+      // Flush serial buffer
+      while (Serial.available() > 0) 
+        char temp = Serial.read();
+      return;
+    }
     
     // if move, skip mode and state
     if (cmdSelect != "move" && cmdSelect != "m") {
@@ -1299,105 +1360,109 @@ void loop() {
   if (millis() - dabble.time >= dabble.interval) {
     getInput();
     dabble.time = millis();
+    if (STM32CheckFlag)
+      sendI2C();
   }
+  
+  if (serialDebug) serialCommand();
 
-  // Idle mode
-  if (fireworks.effectFlag) {
-    SPIControlHub(fireworksCanvas);
-
-    if (fireworks.effectIdx == CLEAR)
-      fireworks.effectFlag = false;
-
-    if (millis() - fireworksCounter.time >= fireworksCounter.interval) {
-      showFireworks();
-      fireworksCounter.time = millis();
-    }
-
-    if (fireworks.effectFinished) {
-      if (gameDebug)
-        Serial.println("Finished Effect: " + String(fireworks.effectIdx));
-
-      fireworks.effectFinished = false;
-
-      if (fireworks.effectIdle) {
-        fireworks.effectIdx++;
-
-        if (fireworks.effectIdx >= CLEAR) {
-          fireworks.effectIdx = NORMAL;
-        }
-      }
-    }
-  }
-
-  // Pre-game
-  if (!gameStart && !gameOver) {
-    if (gameDebug) Serial.println("Game hasn't started yet, press 'Start' to start =)).");
-  }
-
-  // In-game
-  else if (gameStart && !gameOver) {
-    SPIControlHub(gameCanvas);
-
-    // Cứ mỗi chu kì Interval thì nó sẽ update game
-    if (millis() - game.time >= game.interval) {
-      clearSnake();
-      updateGameState();
-      renderSnake();
-      // Serial debug
-      if (gameDebug) debugPrint();
-      game.time = millis(); // Đặt lại thời gian hiện tại
-    }
-
-    // Render food separately to make it flicker
-    if (millis() - foodCounter.time >= foodCounter.interval) {
-      renderFood();
-      foodCounter.time = millis();
-    }
-  } 
-
-  // Game Over and Fireworks
-  else if (gameStart && gameOver && !fireworks.resetGameFlag) {
-    // Khi rắn đủ dài thì hiển thị pháo hoa
-    if (bodySize >= 6 && !fireworks.start) {
-      fireworks.effectIdx = 0;
-      fireworks.start = true;
-    }
-    
-    if (fireworks.start) {
+  if (!STM32CheckFlag) {
+    // Idle mode
+    if (fireworks.effectFlag) {
       SPIControlHub(fireworksCanvas);
+
+      if (fireworks.effectIdx == CLEAR)
+        fireworks.effectFlag = false;
+
       if (millis() - fireworksCounter.time >= fireworksCounter.interval) {
         showFireworks();
         fireworksCounter.time = millis();
       }
-      
+
       if (fireworks.effectFinished) {
+        if (gameDebug)
+          Serial.println("Finished Effect: " + String(fireworks.effectIdx));
+
+        fireworks.effectFinished = false;
+
+        if (fireworks.effectIdle) {
+          fireworks.effectIdx++;
+
+          if (fireworks.effectIdx >= CLEAR) {
+            fireworks.effectIdx = NORMAL;
+          }
+        }
+      }
+    }
+
+    // Pre-game
+    if (!gameStart && !gameOver) {
+      if (gameDebug) Serial.println("Game hasn't started yet, press 'Start' to start =)).");
+    }
+
+    // In-game
+    else if (gameStart && !gameOver) {
+      SPIControlHub(gameCanvas);
+
+      // Cứ mỗi chu kì Interval thì nó sẽ update game
+      if (millis() - game.time >= game.interval) {
+        clearSnake();
+        updateGameState();
+        renderSnake();
+        // Serial debug
+        if (gameDebug) debugPrint();
+        game.time = millis(); // Đặt lại thời gian hiện tại
+      }
+
+      // Render food separately to make it flicker
+      if (millis() - foodCounter.time >= foodCounter.interval) {
+        renderFood();
+        foodCounter.time = millis();
+      }
+    } 
+
+    // Game Over and Fireworks
+    else if (gameStart && gameOver && !fireworks.resetGameFlag) {
+      // Khi rắn đủ dài thì hiển thị pháo hoa
+      if (bodySize >= 6 && !fireworks.start) {
+        fireworks.effectIdx = 0;
+        fireworks.start = true;
+      }
+      
+      if (fireworks.start) {
+        SPIControlHub(fireworksCanvas);
+        if (millis() - fireworksCounter.time >= fireworksCounter.interval) {
+          showFireworks();
+          fireworksCounter.time = millis();
+        }
+        
+        if (fireworks.effectFinished) {
+          if (gameDebug) Serial.println("Game Over");
+          fireworks.start = false;
+          fireworks.effectFinished = false;
+          fireworks.resetGameFlag = true;
+          gameStart = false;
+        }
+      }
+      else {
         if (gameDebug) Serial.println("Game Over");
-        fireworks.start = false;
         fireworks.effectFinished = false;
         fireworks.resetGameFlag = true;
         gameStart = false;
       }
     }
-    else {
-      if (gameDebug) Serial.println("Game Over");
-      fireworks.effectFinished = false;
-      fireworks.resetGameFlag = true;
-      gameStart = false;
+
+    // Restart game *Once*
+    else if (gameOver && fireworks.resetGameFlag) {
+      if (!fireworks.effectFlag)
+        SPIControlHub(gameCanvas);
+
+      if (gameStart) {
+        if (gameDebug) Serial.println("Game Restarted");
+        gameSetup();
+        fireworks.resetGameFlag = false;
+        gameOver = false;
+      }
     }
   }
-
-  // Restart game *Once*
-  else if (gameOver && fireworks.resetGameFlag) {
-    if (!fireworks.effectFlag)
-      SPIControlHub(gameCanvas);
-
-    if (gameStart) {
-      if (gameDebug) Serial.println("Game Restarted");
-      gameSetup();
-      fireworks.resetGameFlag = false;
-      gameOver = false;
-    }
-  }
-
-  if (serialDebug) serialCommand();
 }

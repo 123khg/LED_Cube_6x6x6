@@ -1,0 +1,7 @@
+../Core/Src/main.c:63:6:HAL_I2C_ListenCpltCallback	0	static
+../Core/Src/main.c:67:6:HAL_I2C_AddrCallback	0	static,ignoring_inline_asm
+../Core/Src/main.c:76:6:HAL_I2C_SlaveRxCpltCallback	0	static
+../Core/Src/main.c:81:6:HAL_I2C_ErrorCallback	0	static
+../Core/Src/main.c:149:6:SystemClock_Config	72	static,ignoring_inline_asm
+../Core/Src/main.c:96:5:main	40	static,ignoring_inline_asm
+../Core/Src/main.c:346:6:Error_Handler	0	static,ignoring_inline_asm

@@ -1,7 +1,6 @@
 #include "game_mechanics.h"
 #include "main.h"
 #include <math.h>
-#include <string.h> // For memset()
 
 /*
 ========================================================================

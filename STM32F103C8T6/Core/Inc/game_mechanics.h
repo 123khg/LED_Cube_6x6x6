@@ -2,6 +2,7 @@
 #define GAME_MECHANICS_H
 
 #include "config.h"
+#include <string.h> // For memset()
 
 // ================= Game Setup =================
 #define RNG(start, end) rand() % (end - start) + start
