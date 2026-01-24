@@ -49,7 +49,6 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-uint8_t i2c_rx_buf[32];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -58,15 +57,19 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
+
 /* USER CODE BEGIN PFP */
-volatile uint16_t count = 0;
+uint16_t count = 0;
+
+/* I2C callbacks (already present in project, kept here for completeness) */
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	HAL_I2C_EnableListen_IT(hi2c);
 }
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
 	if (TransferDirection == I2C_DIRECTION_TRANSMIT) {
-		HAL_I2C_Slave_Sequential_Receive_IT(hi2c, i2c_rx_buf, 3, I2C_FIRST_AND_LAST_FRAME);
+		/* Expect exactly 3 bytes (gameStart, effectIdle, bufferDir) */
+		HAL_I2C_Slave_Sequential_Receive_IT(hi2c, i2c_rx_buf, 8, I2C_FIRST_AND_LAST_FRAME);
 	}
 	else {
 		Error_Handler();
@@ -75,15 +78,15 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	count++;
+	/* Re-arm listen mode */
+	HAL_I2C_EnableListen_IT(hi2c);
 }
-
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
 	HAL_I2C_EnableListen_IT(hi2c);
 }
 /* USER CODE END PFP */
-uint8_t hello = 'A';
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
@@ -96,7 +99,7 @@ uint8_t hello = 'A';
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	memset((void*)i2c_rx_buf, 0, sizeof(i2c_rx_buf));
+  memset((void*)i2c_rx_buf, 0, sizeof(i2c_rx_buf));
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -125,20 +128,113 @@ int main(void)
 
   if (HAL_I2C_EnableListen_IT(&hi2c1) != HAL_OK)
 	  Error_Handler();
+
+  /* Initialize game systems */
+  gameSetup();
+  uint16_t last_i2c_count = 0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//    HAL_I2C_Slave_Receive(&hi2c1, i2c_rx_buf, sizeof(i2c_rx_buf), 100);
-    gameStart = (bool) i2c_rx_buf[0];
-    fireworks.effectIdle = (bool) i2c_rx_buf[1];
-    bufferDir = (Direction) i2c_rx_buf[2];
-    /* USER CODE END WHILE */
+	  /* ---- INPUT (ESP32 millis-gated equivalent) ---- */
+	  if (count != last_i2c_count) {
+		  last_i2c_count = count;
+		  getInput();
+	  }
 
-    /* USER CODE BEGIN 3 */
+	  // Idle mode
+	  if (fireworks.effectFlag) {
+		  SPIControlHub(fireworksCanvas);
+
+		  if (fireworks.effectIdx == CLEAR)
+			  fireworks.effectFlag = false;
+
+		  if ((uwTick - fireworksCounter.time) >= fireworksCounter.interval) {
+			  showFireworks();
+			  fireworksCounter.time = uwTick;
+		  }
+
+		  if (fireworks.effectFinished) {
+			  fireworks.effectFinished = false;
+
+			  if (fireworks.effectIdle) {
+				  fireworks.effectIdx++;
+				  if (fireworks.effectIdx >= CLEAR)
+					  fireworks.effectIdx = NORMAL;
+			  }
+		  }
+	  }
+
+	  // Pre-game
+	  if (!gameStart && !gameOver) {
+	  }
+
+	  // In game
+	  else if (gameStart && !gameOver) {
+		  SPIControlHub(gameCanvas);
+
+		  if ((uwTick - game.time) >= game.interval) {
+			  clearSnake();
+			  updateGameState();
+			  renderSnake();
+			  game.time = uwTick;
+		  }
+
+		  if ((uwTick - foodCounter.time) >= foodCounter.interval) {
+			  renderFood();
+			  foodCounter.time = uwTick;
+		  }
+	  }
+
+	  // Game Over and Fireworks
+	  else if (gameStart && gameOver && !fireworks.resetGameFlag) {
+
+		  if (bodySize >= 6 && !fireworks.start) {
+			  fireworks.effectIdx = 0;
+			  fireworks.start = true;
+		  }
+
+		  if (fireworks.start) {
+			  SPIControlHub(fireworksCanvas);
+
+			  if ((uwTick - fireworksCounter.time) >= fireworksCounter.interval) {
+				  showFireworks();
+				  fireworksCounter.time = uwTick;
+			  }
+
+			  if (fireworks.effectFinished) {
+				  fireworks.start = false;
+				  fireworks.effectFinished = false;
+				  fireworks.resetGameFlag = true;
+				  gameStart = false;
+			  }
+		  }
+		  else {
+			  fireworks.effectFinished = false;
+			  fireworks.resetGameFlag = true;
+			  gameStart = false;
+		  }
+	  }
+
+	  // Restart game *Once*
+	  else if (gameOver && fireworks.resetGameFlag) {
+
+		  if (!fireworks.effectFlag)
+			  SPIControlHub(gameCanvas);
+
+		  if (gameStart) {
+			  gameSetup();
+			  fireworks.resetGameFlag = false;
+			  gameOver = false;
+		  }
+	  }
+
+	  HAL_Delay(1);
+    /* USER CODE END WHILE */
   }
+    /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }
 

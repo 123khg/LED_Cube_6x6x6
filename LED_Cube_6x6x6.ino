@@ -13,10 +13,6 @@
 #define SCL 22
 #define STM32CheckPin 4 // Input pull-down
 #define I2C_STM32_ADDR 0x2A
-uint8_t I2CData[8];
-uint8_t I2CDataIdx = 0;
-// If STM32 is plugged in, 3.3V will be connected to
-// this pin and signal ESP32 to switch to Bluetooth-only mode
 
 //################ MBI5026 ################
 #include <SPI.h>
@@ -30,6 +26,7 @@ uint8_t I2CDataIdx = 0;
 #define OE 17
 
 //################ P-MOSFETs ################
+// Active LOW
 #define FET0 13
 #define FET1 27
 #define FET2 26
@@ -66,6 +63,13 @@ Counter spiCounter, dabble, game, foodCounter, fireworksCounter, STM32Counter; /
 //################ GAME SETTINGS ################
 // ESP32 Drive/Bluetooth-only mode
 bool STM32CheckFlag = false;
+bool STM32CheckPinRead;
+
+// I2C Settings
+uint8_t I2CData[8];
+uint8_t I2CDataIdx = 0;
+// If STM32 is plugged in, 3.3V will be connected to
+// this pin and signal ESP32 to switch to Bluetooth-only mode
 
 // SPI Settings
 struct SPIConfig {
@@ -81,6 +85,24 @@ SPIConfig spi = {4*MHz, MSBFIRST, SPI_MODE0, 60, 8, 5, 50};
 SPIClass *vspi = NULL;
 SPISettings settings(spi.clock, spi.bitOrder, spi.mode);
 uint8_t SPIdata[6];
+
+//################ DABBLE ################
+struct DabbleInput_t {
+  bool forward;
+  bool backward;
+  bool left;
+  bool right;
+  bool up;
+  bool down;
+  bool start;
+  bool select;
+};
+DabbleInput_t dabbleInput;
+bool gameDebug = false;
+bool dabbleDebug = false;
+bool serialDebug = true;
+Counter gameDebugCounter, dabbleDebugCounter, serialDebugCounter;
+bool dabbleEnable = true;
 
 // In-game
 bool gameStart = false;
@@ -108,12 +130,6 @@ enum FireworksEffects {
   CORNER,
   CLEAR
 };
-
-//################ DABBLE ################
-bool gameDebug = false;
-bool dabbleDebug = false;
-bool serialDebug = true;
-Counter gameDebugCounter, dabbleDebugCounter, serialDebugCounter;
 
 //################ Canvas ################
 uint8_t gameCanvas[6][6][6];
@@ -456,20 +472,15 @@ void setup() {
   Dabble.begin(BLUETOOTH_NAME);
   Serial.println("Dabble ready. Waiting for connection...");
   
-  // Timing
-  spiCounter.interval = MHz / (spi.fps * 6); // micros
-  dabble.interval = 2; // millis
-  game.interval = 600; // millis
-  foodCounter.interval = 150; // millis
-  fireworksCounter.interval = 250; // millis
-  gameDebugCounter.interval = dabbleDebugCounter.interval = serialDebugCounter.interval = 3000; // millis
-  STM32Counter.interval = 500; // millis
+  // Setup for timings and snake init
+  gameSetup();
 
   Serial.println("Checking if STM32 is connected");
   pinMode(STM32CheckPin, INPUT_PULLDOWN);
   STM32Counter.time = millis();
   while (millis() - STM32Counter.time < STM32Counter.interval) {
-    if (digitalRead(STM32CheckPin)) {
+    STM32CheckPinRead = digitalRead(STM32CheckPin);
+    if (STM32CheckPinRead) {
       Serial.println("STM32 is connected, switching to Bluetooth-only mode");
       initCounters();
       STM32CheckFlag = true;
@@ -490,8 +501,6 @@ void setup() {
       pinMode(FET[i], OUTPUT);
       digitalWrite(FET[i], 1);
     }
-
-    gameSetup();
   }
 }
 
@@ -539,6 +548,15 @@ void initFood() { // Nhat Huy
 }
 
 void initCounters() {
+  // Timing
+  spiCounter.interval = MHz / (spi.fps * 6); // micros
+  dabble.interval = 2; // millis
+  game.interval = 600; // millis
+  foodCounter.interval = 150; // millis
+  fireworksCounter.interval = 250; // millis
+  gameDebugCounter.interval = dabbleDebugCounter.interval = serialDebugCounter.interval = 3000; // millis
+  STM32Counter.interval = 500; // millis
+
   spiCounter.time = micros();
   dabble.time = millis();
   game.time = millis();
@@ -570,14 +588,20 @@ void getInput() { // Phuc Khang
   Dabble.processInput();
 
   // Read all 10 buttons for game controls and settings
-  bool forward = GamePad.isUpPressed();
-  bool backward = GamePad.isDownPressed();
-  bool left = GamePad.isLeftPressed();
-  bool right = GamePad.isRightPressed();
-  bool up = GamePad.isTrianglePressed();
-  bool down = GamePad.isCrossPressed();
-  bool start  = GamePad.isStartPressed();
-  bool select = GamePad.isSelectPressed();
+  dabbleInput.forward = GamePad.isUpPressed();
+  dabbleInput.backward = GamePad.isDownPressed();
+  dabbleInput.left = GamePad.isLeftPressed();
+  dabbleInput.right = GamePad.isRightPressed();
+  dabbleInput.up = GamePad.isTrianglePressed();
+  dabbleInput.down = GamePad.isCrossPressed();
+  dabbleInput.start  = GamePad.isStartPressed();
+  dabbleInput.select = GamePad.isSelectPressed();
+
+  // Send I2C to STM32 if connected
+  if (STM32CheckFlag) {
+    sendI2C();
+    return;
+  }
 
   // Debug
   if (!GamePad.isCirclePressed())
@@ -609,19 +633,20 @@ void getInput() { // Phuc Khang
   }
 
   if (dabbleDebug) {
-    Serial.print("U:"); Serial.print(up);
-    Serial.print(" D:"); Serial.print(down);
-    Serial.print(" L:"); Serial.print(left);
-    Serial.print(" R:"); Serial.print(right);
-    Serial.print(" F:"); Serial.print(forward);
-    Serial.print(" B:"); Serial.print(backward);
-    Serial.print(" S:"); Serial.print(start);
-    Serial.print(" C:"); Serial.println(select);
+    Serial.print("U:"); Serial.print(dabbleInput.up);
+    Serial.print(" D:"); Serial.print(dabbleInput.down);
+    Serial.print(" L:"); Serial.print(dabbleInput.left);
+    Serial.print(" R:"); Serial.print(dabbleInput.right);
+    Serial.print(" F:"); Serial.print(dabbleInput.forward);
+    Serial.print(" B:"); Serial.print(dabbleInput.backward);
+    Serial.print(" S:"); Serial.print(dabbleInput.start);
+    Serial.print(" C:"); Serial.println(dabbleInput.select);
   }
 
   // Start game
-  if (start && !gameStart) {
+  if (dabbleInput.start && !gameStart) {
     gameStart = true;
+    gameOver = false;
     fireworks.effectFlag = false;
     fireworks.effectIdle = false;
     fireworks.effectIdx = NORMAL;
@@ -630,7 +655,7 @@ void getInput() { // Phuc Khang
 
   // ============ Chống đi chéo =============
   // Đếm số nút được nhấn
-  int pressedCount =  up + down + left + right + forward + backward;
+  int pressedCount =  dabbleInput.up + dabbleInput.down + dabbleInput.left + dabbleInput.right + dabbleInput.forward + dabbleInput.backward;
 
   // Nếu 0 nhấn hoặc nhấn hơn 1 nút → bỏ qua, giữ nguyên hướng
   if (pressedCount != 1) {
@@ -639,12 +664,12 @@ void getInput() { // Phuc Khang
 
   // ============ xử lý hướng rắn ============
   // Tránh quay 180 độ
-  if (left  && snakeDir != RIGHT)           bufferDir = LEFT;
-  else if (right && snakeDir != LEFT)       bufferDir = RIGHT;
-  else if (up    && snakeDir != DOWN)       bufferDir = UP;
-  else if (down  && snakeDir != UP)         bufferDir = DOWN;
-  else if (forward && snakeDir != BACKWARD) bufferDir = FORWARD;
-  else if (backward && snakeDir != FORWARD) bufferDir = BACKWARD;
+  if (dabbleInput.left  && snakeDir != RIGHT)           bufferDir = LEFT;
+  else if (dabbleInput.right && snakeDir != LEFT)       bufferDir = RIGHT;
+  else if (dabbleInput.up    && snakeDir != DOWN)       bufferDir = UP;
+  else if (dabbleInput.down  && snakeDir != UP)         bufferDir = DOWN;
+  else if (dabbleInput.forward && snakeDir != BACKWARD) bufferDir = FORWARD;
+  else if (dabbleInput.backward && snakeDir != FORWARD) bufferDir = BACKWARD;
 }
 
 void updateGameState() { // Nhat Huy
@@ -695,10 +720,19 @@ void updateGameState() { // Nhat Huy
 //                       I2C STM32
 //-------------------------------------------------------
 void sendI2C() {
-  I2CData[I2CDataIdx++] = gameStart;
-  I2CData[I2CDataIdx++] = fireworks.effectIdle;
-  I2CData[I2CDataIdx++] = bufferDir;
-  Serial.println("Sending " + String(I2CDataIdx) + " bytes to address " + String(I2C_STM32_ADDR) + ": " + String(I2CData[0]) + " " + String(I2CData[1]) + " " + String(I2CData[2]));
+  I2CData[I2CDataIdx++] = dabbleInput.forward;
+  I2CData[I2CDataIdx++] = dabbleInput.backward;
+  I2CData[I2CDataIdx++] = dabbleInput.left;
+  I2CData[I2CDataIdx++] = dabbleInput.right;
+  I2CData[I2CDataIdx++] = dabbleInput.up;
+  I2CData[I2CDataIdx++] = dabbleInput.down;
+  I2CData[I2CDataIdx++] = dabbleInput.start;
+  I2CData[I2CDataIdx++] = dabbleInput.select;
+
+  // Serial.printf("Sending to address %x %d bytes: ", I2C_STM32_ADDR, I2CDataIdx);
+  // for (int i = 0; i<I2CDataIdx; i++)
+  //   Serial.printf("[%d, %d]", i, I2CData[i]);
+  // Serial.println();
 
   Wire.beginTransmission(I2C_STM32_ADDR);
   Wire.write(I2CData, I2CDataIdx);
@@ -1134,7 +1168,7 @@ String readWord() {
 void serialCommand() { // Phuoc Khang
   if (Serial.available() > 0) {
     bool valid = true;
-    String cmdSelect = readWord(); // "fet", "mbi", "config", "debug", "game", "effect", "restart", {"w", "a", "s", "d", "q", "e"}
+    String cmdSelect = readWord(); // "fet", "mbi", "dabble", "config", "debug", "game", "effect", "restart", {"w", "a", "s", "d", "q", "e"}
     String cmdMode;
     String cmdState;
     int stateVal;
@@ -1160,17 +1194,18 @@ void serialCommand() { // Phuoc Khang
       cmdMode = readWord();
       /* {"0".."5"} - for fet
         {"data", "clock", "latch", "enable"} - for mbi
+        {"0", "1"} - for dabble
         {"spi", "gameInterval", "dabbleInterval", "foodInterval"} - for config
         {"game", "dabble", "serial"} - for debug
         {"start", "over"} - for game
         {"normal", "random", "rain", "frame", "full", "corner", "spiral", "zigzag"} - for effect
       */
       // if fet, check cmdMode for numbers
-      if (cmdSelect == "fet" && (cmdMode.length() != 1 || !isdigit(cmdMode[0])))
+      if ((cmdSelect == "fet" || cmdSelect == "dabble") && (cmdMode.length() != 1 || !isdigit(cmdMode[0])))
         valid = false;
 
-      // if not effect, check cmdState for numbers
-      if (cmdSelect != "effect") {
+      // if not effect & dabble, check cmdState for numbers
+      if (cmdSelect != "effect" && cmdSelect != "dabble") {
         cmdState = readWord();   // "1" or "0" for spi
         // if "config spi", validate cmdState must be exactly one char and isdigit
         if ((cmdSelect == "fet" || cmdSelect == "mbi" || cmdMode == "spi") && (cmdState.length() != 1 || !isdigit(cmdState[0]))) {
@@ -1209,6 +1244,10 @@ void serialCommand() { // Phuoc Khang
       }
       else
         valid = false;
+    }
+    else if (valid && cmdSelect == "dabble") {
+      dabbleEnable = bool(cmdMode.toInt());
+      Serial.println("Dabble enable set to: " + String(dabbleEnable));
     }
     else if (valid && cmdSelect == "config") {
       if (cmdMode == "spi") {
@@ -1313,35 +1352,35 @@ void serialCommand() { // Phuoc Khang
       bool forward = 0, left = 0, backward = 0, right = 0, down = 0, up = 0;
       switch(dir) {
         case 'w':
-          forward = true;
+          dabbleInput.forward = true;
           break;
         case 'a':
-          left = true;
+          dabbleInput.left = true;
           break;
         case 's':
-          backward = true;
+          dabbleInput.backward = true;
           break;
         case 'd':
-          right = true;
+          dabbleInput.right = true;
           break;
         case 'q':
-          down = true;
+          dabbleInput.down = true;
           break;
         case 'e':
-          up = true;
+          dabbleInput.up = true;
           break;
         default:
           valid = false;
       }
       Serial.print("Move command received: " + String(dir) + '\t');
-      Serial.println("W: " + String(forward) + " A: " + String(left) + " S: " + String(backward) + " D: " + String(right) + " Q: " + String(down) + " E: " + String(up));
+      Serial.println("W: " + String(dabbleInput.forward) + " A: " + String(dabbleInput.left) + " S: " + String(dabbleInput.backward) + " D: " + String(dabbleInput.right) + " Q: " + String(dabbleInput.down) + " E: " + String(dabbleInput.up));
       
-      if (left  && snakeDir != RIGHT)           bufferDir = LEFT;
-      else if (right && snakeDir != LEFT)       bufferDir = RIGHT;
-      else if (up    && snakeDir != DOWN)       bufferDir = UP;
-      else if (down  && snakeDir != UP)         bufferDir = DOWN;
-      else if (forward && snakeDir != BACKWARD) bufferDir = FORWARD;
-      else if (backward && snakeDir != FORWARD) bufferDir = BACKWARD;
+      if (dabbleInput.left          && snakeDir != RIGHT)    bufferDir = LEFT;
+      else if (dabbleInput.right    && snakeDir != LEFT)     bufferDir = RIGHT;
+      else if (dabbleInput.up       && snakeDir != DOWN)     bufferDir = UP;
+      else if (dabbleInput.down     && snakeDir != UP)       bufferDir = DOWN;
+      else if (dabbleInput.forward  && snakeDir != BACKWARD) bufferDir = FORWARD;
+      else if (dabbleInput.backward && snakeDir != FORWARD)  bufferDir = BACKWARD;
     }
 
     if (!valid) {
@@ -1358,15 +1397,21 @@ void serialCommand() { // Phuoc Khang
 //-------------------------------------------------------
 void loop() {
   if (millis() - dabble.time >= dabble.interval) {
-    getInput();
+    if(dabbleEnable) getInput();
+    if (STM32CheckFlag) sendI2C();
+    STM32CheckPinRead = digitalRead(STM32CheckPin);
     dabble.time = millis();
-    if (STM32CheckFlag)
-      sendI2C();
   }
   
   if (serialDebug) serialCommand();
 
   if (!STM32CheckFlag) {
+    // Hot swap STM32
+    if (STM32CheckPinRead) {
+        Serial.println("STM32 is connected while in Drive mode. Forcing emergency hard restart.");
+        ESP.restart();
+    }
+
     // Idle mode
     if (fireworks.effectFlag) {
       SPIControlHub(fireworksCanvas);
@@ -1464,5 +1509,12 @@ void loop() {
         gameOver = false;
       }
     }
+  }
+  else {
+      // Hot swap STM32
+      if (!STM32CheckPinRead) {
+          Serial.println("STM32 is disconnected while in Bluetooth-only mode. Forcing emergency hard restart.");
+          ESP.restart();
+      }
   }
 }

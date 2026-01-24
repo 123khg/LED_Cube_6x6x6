@@ -1,7 +1,11 @@
 #include "config.h"
 
 // ================= Counters =================
-Counter spiCounter, dabble, game, foodCounter, fireworksCounter; // Modify at setup()
+Counter spiCounter, dabble, game, foodCounter, fireworksCounter;
+Counter gameDebugCounter, dabbleDebugCounter, serialDebugCounter;
+//Only use serialDebug for Effect toggling
+// ================= I2C =================
+uint8_t i2c_rx_buf[8];
 
 // ================= SPI =================
 SPIConfig spi = {
@@ -24,6 +28,9 @@ FET_GPIO FET[6] = {
 	{FET4_GPIO_Port, FET4_Pin},
 	{FET5_GPIO_Port, FET5_Pin},
 };
+
+// ================= Dabble =================
+DabbleInput_t dabbleInput;
 
 // ================= Game State =================
 bool gameStart = false;

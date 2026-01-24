@@ -40,16 +40,19 @@ typedef struct {
     uint8_t  maxBodyDuty;
 } SPIConfig;
 
-// ================= Fireworks =================
+// ================= Dabble Config =================
 typedef struct {
+    bool forward;
+    bool backward;
+    bool left;
+    bool right;
+    bool up;
+    bool down;
     bool start;
-    bool resetGameFlag;
-    bool effectFlag;
-    bool effectIdle;
-    bool effectFinished;
-    int  effectIdx;
-} Fireworks;
+    bool select;
+} DabbleInput_t;
 
+// ================= Fireworks =================
 typedef enum {
   NORMAL,
   RANDOM,
@@ -60,19 +63,37 @@ typedef enum {
   CLEAR
 } FireworksEffects;
 
+typedef struct {
+    bool start;
+    bool resetGameFlag;
+    bool effectFlag;
+    bool effectIdle;
+    bool effectFinished;
+    FireworksEffects  effectIdx;
+} Fireworks;
+
 // ================= Global Game State =================
+// Timings
 extern Counter spiCounter, dabble, game, foodCounter, fireworksCounter;
+extern Counter gameDebugCounter, dabbleDebugCounter, serialDebugCounter;
 #define micros() ((uint32_t)TIM2->CNT)
 
+// I2C
+extern uint8_t i2c_rx_buf[8];
+
+// SPI
 extern SPIConfig spi;
 #define SPIx SPI1
 extern uint8_t SPIdata[6];
 extern uint16_t cycles;
 typedef struct {
 	GPIO_TypeDef* port;
-	uint16_t pin;
+	uint32_t pin;
 } FET_GPIO;
 extern FET_GPIO FET[6];
+
+// Dabble
+extern DabbleInput_t dabbleInput;
 
 // In-game
 extern bool gameStart;

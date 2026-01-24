@@ -32,6 +32,7 @@ void clearCanvas(uint8_t canvas[6][6][6], size_t size) {
 }
 clearCanvas(gameCanvas, sizeof(gameCanvas));
  */
+void initCounters(void);
 void gameSetup(void);
 void initSnake(void);
 void initFood(void);
@@ -57,7 +58,6 @@ void fireworks_CornerCube();
 void showFireworks();
 
 // ================= SPI & PWM Controls =================
-// ================= SPI / PWM =================
 void SPIByteMapping(
     const uint8_t layer[6][6],
     uint8_t out[6]
@@ -74,6 +74,9 @@ void SPIOutput(
     int FETidx
 );
 
+extern uint8_t pwmPhase;
+extern uint8_t layerIdx;
+extern uint8_t pwmLayer[6][6];
 void SPIControlHub(
     uint8_t canvas[6][6][6]
 );

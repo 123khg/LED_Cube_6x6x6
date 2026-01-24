@@ -1,6 +1,7 @@
 #include "game_mechanics.h"
 #include "main.h"
 #include <math.h>
+#include <stdlib.h> // For rand() and srand()
 
 /*
 ========================================================================
@@ -26,10 +27,34 @@ They are replaced by TODO notes where applicable.
 //-------------------------------------------------------
 //                    INITIALIZATION
 //-------------------------------------------------------
-#include <stdlib.h> // For rand() and srand()
-
 void clearCanvas(uint8_t (*canvas)[6][6]) {
   memset(canvas, 0, 6 * sizeof(*canvas));
+}
+
+void initCounters(void) {
+  // Timing
+  spiCounter.interval = 1000000 / (spi.fps * 6); // micros
+  game.interval = 600; // millis
+  foodCounter.interval = 150; // millis
+  fireworksCounter.interval = 250; // millis
+  // These are for ESP, no need
+//  dabble.interval = 2; // millis
+//  gameDebugCounter.interval = dabbleDebugCounter.interval = 3000;
+  serialDebugCounter.interval = 3000; // millis
+//  STM32Counter.interval = 500; // millis
+
+
+  // Initialize Counters
+  cycles = 1U << spi.pwmRes;
+  spiCounter.time = micros();
+  game.time = uwTick;
+  foodCounter.time = uwTick;
+  fireworksCounter.time = uwTick;
+  // These are for ESP, no need
+//  dabble.time = uwTick;
+//  gameDebugCounter.time = uwTick;
+//  dabbleDebugCounter.time = uwTick;
+  serialDebugCounter.time = uwTick;
 }
 
 void gameSetup(void) {
@@ -46,17 +71,7 @@ void gameSetup(void) {
 
   initSnake();
   initFood();
-
-  // Initialize Counters
-  cycles = 1U << spi.pwmRes;
-  spiCounter.time = micros();
-  dabble.time = uwTick;
-  game.time = uwTick;
-  foodCounter.time = uwTick;
-  fireworksCounter.time = uwTick;
-//  gameDebugCounter.time = uwTick;
-//  dabbleDebugCounter.time = uwTick;
-//  serialDebugCounter.time = uwTick;
+  initCounters();
 }
 
 void initSnake(void) {
@@ -103,22 +118,49 @@ void initFood(void) {
 //-------------------------------------------------------
 
 void getInput(void) {
-  /* TODO:
-     Replace Dabble.processInput() and GamePad with
-     GPIO / UART / BLE / custom input handling
-  */
+  dabbleInput.forward  = i2c_rx_buf[0];
+  dabbleInput.backward = i2c_rx_buf[1];
+  dabbleInput.left     = i2c_rx_buf[2];
+  dabbleInput.right    = i2c_rx_buf[3];
+  dabbleInput.up       = i2c_rx_buf[4];
+  dabbleInput.down     = i2c_rx_buf[5];
+  dabbleInput.start    = i2c_rx_buf[6];
+  dabbleInput.select   = i2c_rx_buf[7];
 
-  bool forward  = false;
-  bool backward = false;
-  bool left     = false;
-  bool right    = false;
-  bool up       = false;
-  bool down     = false;
-  bool start    = false;
-//  bool select   = false;
+  /* Reset timer on button release */
+//  if (!circlePressed)
+//	  gameDebugCounter.time = uwTick;
+//  if (!squarePressed)
+//	  dabbleDebugCounter.time = uwTick;
+  if (!dabbleInput.select)
+	  serialDebugCounter.time = uwTick;
 
-  if (start && !gameStart) {
+  /* Toggle gameDebug on sustained press */
+//  if ((uwTick - gameDebugCounter.time) >= gameDebugCounter.interval) {
+//	  gameDebug = !gameDebug;
+//	  gameDebugCounter.time = uwTick;
+//  }
+//
+//  /* Toggle dabbleDebug on sustained press */
+//  if ((uwTick - dabbleDebugCounter.time) >= dabbleDebugCounter.interval) {
+//	  dabbleDebug = !dabbleDebug;
+//	  dabbleDebugCounter.time = uwTick;
+//  }
+
+  /* Toggle idle effects on sustained select press */
+  if ((uwTick - serialDebugCounter.time) >= serialDebugCounter.interval) {
+	  fireworks.effectIdle = true;
+	  fireworks.effectIdx = NORMAL;
+	  fireworks.effectFlag = true;
+	  gameStart = false;
+	  gameOver = true;
+	  serialDebugCounter.time = uwTick;
+  }
+
+  // Start game
+  if (dabbleInput.start && !gameStart) {
     gameStart = true;
+    gameOver = false;
     fireworks.effectFlag = false;
     fireworks.effectIdle = false;
     fireworks.effectIdx  = NORMAL;
@@ -126,19 +168,26 @@ void getInput(void) {
   }
 
   // ============ Chống đi chéo =============
-  int pressedCount =
-      up + down + left + right + forward + backward;
+  int pressedCount = dabbleInput.up + dabbleInput.down +
+		  dabbleInput.left + dabbleInput.right +
+		  dabbleInput.forward + dabbleInput.backward;
 
   if (pressedCount != 1)
     return;
 
   // ============ xử lý hướng rắn ============
-  if (left     && snakeDir != RIGHT)    bufferDir = LEFT;
-  else if (right && snakeDir != LEFT)   bufferDir = RIGHT;
-  else if (up    && snakeDir != DOWN)   bufferDir = UP;
-  else if (down  && snakeDir != UP)     bufferDir = DOWN;
-  else if (forward  && snakeDir != BACKWARD) bufferDir = FORWARD;
-  else if (backward && snakeDir != FORWARD)  bufferDir = BACKWARD;
+  if (dabbleInput.left && snakeDir != RIGHT)
+      bufferDir = LEFT;
+  else if (dabbleInput.right && snakeDir != LEFT)
+      bufferDir = RIGHT;
+  else if (dabbleInput.up && snakeDir != DOWN)
+      bufferDir = UP;
+  else if (dabbleInput.down && snakeDir != UP)
+      bufferDir = DOWN;
+  else if (dabbleInput.forward && snakeDir != BACKWARD)
+      bufferDir = FORWARD;
+  else if (dabbleInput.backward && snakeDir != FORWARD)
+      bufferDir = BACKWARD;
 }
 
 void updateGameState(void) {
@@ -558,6 +607,10 @@ void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
   // Remember to solder the remaining 2 unconnected inputs of SN74LS07 to ground, don't leave them floating!!!
   // -> well, they seem to work fine without being grounded anyways - Update: 11/12/2025
 
+	/* Disable output + unlatch */
+	OE_GPIO_Port->BSRR    = ((uint32_t)OE_Pin    << 16);   // OE HIGH (disable)
+//	LATCH_GPIO_Port->BSRR = ((uint32_t)LATCH_Pin << 16);   // LATCH LOW
+
 	// Okay new level of coding here: we do it C bare metal (for speed) - Update: 19/1/2026
 	// Move from HAL_GPIO_WritePin to direct register access
 	// Basically the HAL just covers up the same thing with a better name
@@ -571,12 +624,8 @@ void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
 	// That means 0000_0000_0000_1000 0000_0000_0000_0000 (RESET lane)
 	/* Disable all FET layers (ACTIVE LOW → drive HIGH) */
 	for (int i = 0; i < 6; i++) {
-		FET[i].port->BSRR = ((uint32_t)FET[i].pin << 16);
+		FET[i].port->BSRR = FET[i].pin << 16;
 	}
-
-	/* Disable output + unlatch */
-	OE_GPIO_Port->BSRR    = ((uint32_t)OE_Pin    << 16);   // OE HIGH (disable)
-	LATCH_GPIO_Port->BSRR = ((uint32_t)LATCH_Pin << 16);   // LATCH LOW
 
 	// Instead of vspi->beginTransaction() like C++,
 	// We first check if the SPI has done sending out data before overriding the register with new byte
@@ -585,6 +634,13 @@ void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
 	// BSY means Busy (Bits are still moving on the wire)
 	// while (!(SPIx->SR & SPI_SR_TXE)); -> wait until byte is sent to send next byte
 	// while (SPIx->SR & SPI_SR_BSY); -> wait until last bit is physically done
+
+	// Ensure SPI enabled
+	SPIx->CR1 |= SPI_CR1_SPE;
+
+	// Drain previous transaction
+	while (SPIx->SR & SPI_SR_BSY);
+
 	/* Push 6 bytes through SPI */
 	for (int i = 0; i < 6; i++) {
 		while (!(SPIx->SR & SPI_SR_TXE));
@@ -592,20 +648,21 @@ void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
 	}
 	while (SPIx->SR & SPI_SR_BSY);
 
-	/* Enable selected FET layer (ACTIVE LOW) */
+	// Latch new data
+	LATCH_GPIO_Port->BSRR = LATCH_Pin;      // LATCH HIGH
+	LATCH_GPIO_Port->BSRR = LATCH_Pin << 16;// LATCH LOW
+
+	// NOW enable the selected layer
 	FET[FETidx].port->BSRR = FET[FETidx].pin << 16;
 
-	/* Latch + enable output */
-	LATCH_GPIO_Port->BSRR = LATCH_Pin;           // LATCH HIGH
-	OE_GPIO_Port->BSRR    = OE_Pin << 16;        // OE LOW (enable)
-	LATCH_GPIO_Port->BSRR = LATCH_Pin << 16;     // LATCH LOW
+	// Finally enable outputs
+	OE_GPIO_Port->BSRR = OE_Pin << 16; // OE LOW
 }
 
+uint8_t pwmPhase = 0;
+uint8_t layerIdx = 0;
+uint8_t pwmLayer[6][6];
 void SPIControlHub(uint8_t canvas[6][6][6]) {
-  static uint8_t pwmPhase = 0;
-  static uint8_t layerIdx = 0;
-  uint8_t pwmLayer[6][6];
-
   PWMCalc(pwmPhase, canvas[layerIdx], pwmLayer);
   SPIByteMapping(pwmLayer, SPIdata);
   SPIOutput(SPIdata, layerIdx);
@@ -614,8 +671,8 @@ void SPIControlHub(uint8_t canvas[6][6][6]) {
   if (pwmPhase >= cycles)
     pwmPhase = 0;
 
-  uint16_t now = micros();
-  if ((uint16_t)(now - spiCounter.time) >= spiCounter.interval) {
+  uint32_t now = micros();
+  if ((now - spiCounter.time) >= spiCounter.interval) {
     layerIdx++;
     if (layerIdx > 5)
       layerIdx = 0;
