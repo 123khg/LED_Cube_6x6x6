@@ -230,10 +230,8 @@ int main(void)
 			  gameOver = false;
 		  }
 	  }
-
-	  HAL_Delay(1);
-    /* USER CODE END WHILE */
   }
+    /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }

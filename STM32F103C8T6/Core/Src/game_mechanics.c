@@ -311,9 +311,9 @@ void fireworks_Normal(void)
         int dy = RNG(-2, 3);
         int dz = RNG(-2, 3);
 
-        int x = constrain(centerX + dx, 0, 6);
-        int y = constrain(centerY + dy, 0, 6);
-        int z = constrain(centerZ + dz, 0, 6);
+        int x = constrain(centerX + dx, 0, 5);
+        int y = constrain(centerY + dy, 0, 5);
+        int z = constrain(centerZ + dz, 0, 5);
 
         fireworksCanvas[z][y][x] = 100;
     }
@@ -599,64 +599,89 @@ void PWMCalc(uint8_t phase, uint8_t layer[6][6], uint8_t out[6][6]) {
   }
 }
 
-void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
-  // FET Active LOW
-  // OE Active LOW
-  // LATCH Active HIGH
-  // SPI MSBFIRST
-  // Remember to solder the remaining 2 unconnected inputs of SN74LS07 to ground, don't leave them floating!!!
-  // -> well, they seem to work fine without being grounded anyways - Update: 11/12/2025
 
-	/* Disable output + unlatch */
-	OE_GPIO_Port->BSRR    = ((uint32_t)OE_Pin    << 16);   // OE HIGH (disable)
-//	LATCH_GPIO_Port->BSRR = ((uint32_t)LATCH_Pin << 16);   // LATCH LOW
+//void SPIOutput(uint8_t data[6], int FETidx) { // Phuoc Khang
+//  // FET Active LOW
+//  // OE Active LOW
+//  // LATCH Active HIGH
+//  // SPI MSBFIRST
+//  // Remember to solder the remaining 2 unconnected inputs of SN74LS07 to ground, don't leave them floating!!!
+//  // -> well, they seem to work fine without being grounded anyways - Update: 11/12/2025
+//
+//	/* Disable output + unlatch */
+//	OE_GPIO_Port->BSRR    = ((uint32_t)OE_Pin    << 16);   // OE HIGH (disable)
+////	LATCH_GPIO_Port->BSRR = ((uint32_t)LATCH_Pin << 16);   // LATCH LOW
+//
+//	// Okay new level of coding here: we do it C bare metal (for speed) - Update: 19/1/2026
+//	// Move from HAL_GPIO_WritePin to direct register access
+//	// Basically the HAL just covers up the same thing with a better name
+//	// BSRR means Bit Set/Reset Register, which is uint32_t
+//	// From bit 0 to 15 is "SET" and bit 16 to 31 is "RESET"
+//	// Let's have an example of the GPIO_Pin_3 which is 0b0000_0000_0000_1000
+//	// When not shifted by bits, setting the register at port A: GPIOA->BSRR = GPIO_Pin_3
+//	// Means the register is set to this 0000_0000_0000_0000 0000_0000_0000_1000 (SET lane)
+//	// The register then commands the pin to HIGH then empties out the buffer
+//	// When reset, we shift it leftwards by 16 bits: GPIOA->BSRR = GPIO_Pin_3 << 16
+//	// That means 0000_0000_0000_1000 0000_0000_0000_0000 (RESET lane)
+//	/* Disable all FET layers (ACTIVE LOW → drive HIGH) */
+//	for (int i = 0; i < 6; i++) {
+//		FET[i].port->BSRR = FET[i].pin;
+//	}
+//
+//	// Instead of vspi->beginTransaction() like C++,
+//	// We first check if the SPI has done sending out data before overriding the register with new byte
+//	// SR means Status Register and DR means Data Register
+//	// TXE means Tx Empty (Transmit Buffer Empty)
+//	// BSY means Busy (Bits are still moving on the wire)
+//	// while (!(SPIx->SR & SPI_SR_TXE)); -> wait until byte is sent to send next byte
+//	// while (SPIx->SR & SPI_SR_BSY); -> wait until last bit is physically done
+//
+//	// Ensure SPI enabled
+//	SPIx->CR1 |= SPI_CR1_SPE;
+//
+//	// Drain previous transaction
+//	while (SPIx->SR & SPI_SR_BSY);
+//
+//	/* Push 6 bytes through SPI */
+//	for (int i = 0; i < 6; i++) {
+//		while (!(SPIx->SR & SPI_SR_TXE));
+//		SPIx->DR = data[i];
+//	}
+//	while (SPIx->SR & SPI_SR_BSY);
+//
+//	// Latch new data
+//	LATCH_GPIO_Port->BSRR = LATCH_Pin;      // LATCH HIGH
+//	LATCH_GPIO_Port->BSRR = LATCH_Pin << 16;// LATCH LOW
+//
+//	// NOW enable the selected layer
+//	FET[FETidx].port->BSRR = FET[FETidx].pin << 16;
+//
+//	// Finally enable outputs
+//	OE_GPIO_Port->BSRR = OE_Pin << 16; // OE LOW
+//}
 
-	// Okay new level of coding here: we do it C bare metal (for speed) - Update: 19/1/2026
-	// Move from HAL_GPIO_WritePin to direct register access
-	// Basically the HAL just covers up the same thing with a better name
-	// BSRR means Bit Set/Reset Register, which is uint32_t
-	// From bit 0 to 15 is "SET" and bit 16 to 31 is "RESET"
-	// Let's have an example of the GPIO_Pin_3 which is 0b0000_0000_0000_1000
-	// When not shifted by bits, setting the register at port A: GPIOA->BSRR = GPIO_Pin_3
-	// Means the register is set to this 0000_0000_0000_0000 0000_0000_0000_1000 (SET lane)
-	// The register then commands the pin to HIGH then empties out the buffer
-	// When reset, we shift it leftwards by 16 bits: GPIOA->BSRR = GPIO_Pin_3 << 16
-	// That means 0000_0000_0000_1000 0000_0000_0000_0000 (RESET lane)
-	/* Disable all FET layers (ACTIVE LOW → drive HIGH) */
-	for (int i = 0; i < 6; i++) {
-		FET[i].port->BSRR = FET[i].pin << 16;
-	}
+void SPIOutput(uint8_t data[6], int FETidx)
+{
+    /* 1. Disable output */
+    OE_GPIO_Port->BSRR = OE_Pin;   // OE HIGH (disable)
 
-	// Instead of vspi->beginTransaction() like C++,
-	// We first check if the SPI has done sending out data before overriding the register with new byte
-	// SR means Status Register and DR means Data Register
-	// TXE means Tx Empty (Transmit Buffer Empty)
-	// BSY means Busy (Bits are still moving on the wire)
-	// while (!(SPIx->SR & SPI_SR_TXE)); -> wait until byte is sent to send next byte
-	// while (SPIx->SR & SPI_SR_BSY); -> wait until last bit is physically done
+    /* 2. Disable all FET layers (ACTIVE LOW → drive HIGH) */
+    for (int i = 0; i < 6; i++) {
+        FET[i].port->BSRR = FET[i].pin;   // HIGH = OFF
+    }
 
-	// Ensure SPI enabled
-	SPIx->CR1 |= SPI_CR1_SPE;
+    /* 3. Transmit 6 bytes over SPI (blocking) */
+    HAL_SPI_Transmit(&hspi1, data, 6, HAL_MAX_DELAY);
 
-	// Drain previous transaction
-	while (SPIx->SR & SPI_SR_BSY);
+    /* 4. Latch shifted data */
+    LATCH_GPIO_Port->BSRR = LATCH_Pin;          // LATCH HIGH
+    LATCH_GPIO_Port->BSRR = LATCH_Pin << 16;    // LATCH LOW
 
-	/* Push 6 bytes through SPI */
-	for (int i = 0; i < 6; i++) {
-		while (!(SPIx->SR & SPI_SR_TXE));
-		SPIx->DR = data[i];
-	}
-	while (SPIx->SR & SPI_SR_BSY);
+    /* 5. Enable selected layer */
+    FET[FETidx].port->BSRR = FET[FETidx].pin << 16;  // LOW = ON
 
-	// Latch new data
-	LATCH_GPIO_Port->BSRR = LATCH_Pin;      // LATCH HIGH
-	LATCH_GPIO_Port->BSRR = LATCH_Pin << 16;// LATCH LOW
-
-	// NOW enable the selected layer
-	FET[FETidx].port->BSRR = FET[FETidx].pin << 16;
-
-	// Finally enable outputs
-	OE_GPIO_Port->BSRR = OE_Pin << 16; // OE LOW
+    /* 6. Enable output */
+    OE_GPIO_Port->BSRR = OE_Pin << 16;   // OE LOW (enable)
 }
 
 uint8_t pwmPhase = 0;

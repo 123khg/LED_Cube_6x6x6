@@ -19,5 +19,5 @@
 ../Core/Src/game_mechanics.c:534:6:showFireworks	0	static
 ../Core/Src/game_mechanics.c:552:6:SPIByteMapping	408	static
 ../Core/Src/game_mechanics.c:588:6:PWMCalc	28	static
-../Core/Src/game_mechanics.c:602:6:SPIOutput	20	static
-../Core/Src/game_mechanics.c:665:6:SPIControlHub	16	static
+../Core/Src/game_mechanics.c:663:6:SPIOutput	24	static
+../Core/Src/game_mechanics.c:690:6:SPIControlHub	16	static
