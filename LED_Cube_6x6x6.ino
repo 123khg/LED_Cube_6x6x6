@@ -795,9 +795,9 @@ void fireworks_Normal() {
     int dx = random(-2,3);
     int dy = random(-2,3);
     int dz = random(-2,3);
-    int x = constrain(centerX + dx, 0, 6);
-    int y = constrain(centerY + dy, 0, 6);
-    int z = constrain(centerZ + dz, 0, 6);
+    int x = constrain(centerX + dx, 0, 5);
+    int y = constrain(centerY + dy, 0, 5);
+    int z = constrain(centerZ + dz, 0, 5);
     fireworksCanvas[z][y][x] = 100;
   }
   checkIdleEffectFinished(12);
@@ -1511,10 +1511,10 @@ void loop() {
     }
   }
   else {
-      // Hot swap STM32
-      if (!STM32CheckPinRead) {
-          Serial.println("STM32 is disconnected while in Bluetooth-only mode. Forcing emergency hard restart.");
-          ESP.restart();
-      }
+    // Hot swap STM32
+    if (!STM32CheckPinRead) {
+        Serial.println("STM32 is disconnected while in Bluetooth-only mode. Forcing emergency hard restart.");
+        ESP.restart();
+    }
   }
 }
